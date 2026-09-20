@@ -1,3 +1,15 @@
+# Dependencies (none are required, but keep the tree clean if you run npm)
 node_modules/
+
+# Logs
 *.log
+logs/
+npm-debug.log*
+
+# OS / editor cruft
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

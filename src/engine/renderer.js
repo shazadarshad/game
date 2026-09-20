@@ -24,6 +24,9 @@ export class RenderEngine {
     );
     this.renderer.setClearColor(CONFIG.render.clearColor);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // Filmic tone mapping for a more natural highlight rolloff outdoors.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = CONFIG.render.toneMappingExposure ?? 1;
 
     if (CONFIG.render.shadows) {
       this.renderer.shadowMap.enabled = true;

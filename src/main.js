@@ -11,13 +11,17 @@
  *     best-lap tracking and the finish transition.
  *   render:       update the chase camera and the DOM HUD.
  *
- * R resets the car to the track spawn during a race, and restarts the race from
- * the countdown once finished.
+ * R during a race recovers the car at the last passed checkpoint (position +
+ * heading, zeroed velocity) so a spin-out is recoverable; R on the finish
+ * screen restarts the race from the countdown.
+ *
+ * A tiny systems registry on the loop (see loop.js and src/systems/README.md)
+ * lets later phases (opponent AI, audio, minimap, extra cars) layer on without
+ * touching this bootstrap.
  *
  * Runs in the browser only. Bare specifiers ("three", "cannon-es") resolve via
  * the importmap in index.html, so this file cannot be imported by Node.
  */
-import * as THREE from "three";
 import { CONFIG } from "./config.js";
 import { RenderEngine } from "./engine/renderer.js";
 import { ChaseCamera } from "./engine/camera.js";
@@ -28,6 +32,7 @@ import { Car } from "./game/car.js";
 import { Track } from "./game/track.js";
 import { RaceDirector, RacePhase } from "./game/raceState.js";
 import { Hud } from "./game/hud.js";
+import { buildEnvironment } from "./game/environment.js";
 
 function boot() {
   const canvas = document.getElementById("game");
@@ -41,7 +46,9 @@ function boot() {
   const input = new InputManager(window);
   input.attach();
 
-  buildLighting(engine.scene);
+  // Lit outdoor environment: procedural gradient sky, framed-shadow sun,
+  // hemisphere + ambient fill, fog matched to the sky horizon.
+  buildEnvironment(engine.scene, engine.scene.fog);
 
   // Physics world + designed track (road, barriers, checkpoints) + player car.
   const physics = new PhysicsWorld();
@@ -56,19 +63,34 @@ function boot() {
 
   let firstFrameShown = false;
 
+  // Shared context handed to any registered systems (see loop.js extension
+  // seam and src/systems/README.md). Future OpponentAI / Audio / Minimap
+  // systems read the live game objects from here.
+  const context = { engine, scene: engine.scene, camera: chaseCamera, car, track, race, input };
+
   const loop = new GameLoop({
     step: CONFIG.physics.timestep,
     maxSubSteps: CONFIG.physics.maxSubSteps,
+    context,
     onUpdate: (dt) => {
       const state = input.getState();
 
       if (state.reset) {
         if (race.phase === RacePhase.FINISHED) {
+          // R on the finish screen restarts the whole race from the countdown.
           spawnOnTrack(car, chaseCamera, track);
           race.restart();
           race.seedPosition(car.position);
         } else {
-          spawnOnTrack(car, chaseCamera, track);
+          // R mid-race recovers a spin-out at the last passed checkpoint
+          // (position + heading, zeroed velocity), falling back to the grid
+          // spawn if no gate has been passed yet.
+          const pose = race.lastCheckpointPose;
+          if (pose) {
+            respawnAt(car, chaseCamera, pose.position, pose.heading);
+          } else {
+            spawnOnTrack(car, chaseCamera, track);
+          }
           race.seedPosition(car.position);
         }
       }
@@ -114,34 +136,34 @@ const NEUTRAL_INPUT = Object.freeze({
 
 /** Place the car at the track spawn, facing along the track, and snap camera. */
 function spawnOnTrack(car, chaseCamera, track) {
-  // Build a yaw-only quaternion (about +Y) matching the spawn heading, then use
-  // the vehicle's documented reset(position, quaternion) to teleport cleanly.
-  const half = track.spawnHeading / 2;
-  const quaternion = { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) };
-  car.vehicle.reset(track.spawn, quaternion);
-  car._steer = 0;
-  car.sync();
-  chaseCamera.snap(car.position, track.spawnHeading);
+  respawnAt(car, chaseCamera, track.spawn, track.spawnHeading);
 }
 
-function buildLighting(scene) {
-  // Ambient fill so shadowed faces are not pure black.
-  const ambient = new THREE.HemisphereLight(0xbfd8ff, 0x3a4a2f, 0.7);
-  scene.add(ambient);
-
-  // Key directional light with shadow.
-  const sun = new THREE.DirectionalLight(0xfff2d8, 1.6);
-  sun.position.set(80, 140, 60);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  const cam = sun.shadow.camera;
-  cam.near = 1;
-  cam.far = 500;
-  cam.left = -180;
-  cam.right = 180;
-  cam.top = 180;
-  cam.bottom = -180;
-  scene.add(sun);
+/**
+ * Teleport the car to a ground pose (position + yaw heading) with velocity
+ * zeroed, clear drift feedback, and snap the chase camera behind it. `position`
+ * may omit y; the configured spawn height is used so the car settles onto its
+ * wheels.
+ * @param {Car} car
+ * @param {ChaseCamera} chaseCamera
+ * @param {{x:number,y?:number,z:number}} position
+ * @param {number} heading yaw in radians
+ */
+function respawnAt(car, chaseCamera, position, heading) {
+  // Build a yaw-only quaternion (about +Y) matching the heading, then use the
+  // vehicle's documented reset(position, quaternion) to teleport cleanly.
+  const half = heading / 2;
+  const quaternion = { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) };
+  const target = {
+    x: position.x,
+    y: position.y ?? CONFIG.track.spawnHeight,
+    z: position.z,
+  };
+  car.vehicle.reset(target, quaternion);
+  car._steer = 0;
+  car._resetDriftFeedback(target);
+  car.sync();
+  chaseCamera.snap(car.position, heading);
 }
 
 if (typeof document !== "undefined") {

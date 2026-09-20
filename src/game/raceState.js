@@ -177,6 +177,44 @@ export class RaceDirector {
     this.tracker.seed(position);
   }
 
+  /**
+   * Index of the last gate the car legally passed this lap, or -1 if none have
+   * been passed yet (still on the opening run to the start line). Derived from
+   * the lap state's nextCheckpoint: the previous gate in the ordered sequence.
+   * @returns {number}
+   */
+  get lastPassedGateIndex() {
+    const s = this.lapState;
+    // Before timing starts, nothing has been passed.
+    if (s.lapStartTimeMs === null) return -1;
+    const next = s.nextCheckpoint;
+    // nextCheckpoint === 0 means every intermediate gate is cleared and the car
+    // is heading for the start/finish line; the last passed gate is the final
+    // intermediate one.
+    if (next <= 0) return this.numCheckpoints - 1;
+    // next === 1 means only the start line has been crossed this lap.
+    return next - 1;
+  }
+
+  /**
+   * Respawn pose (ground position + heading) at the last passed gate, so a
+   * spun-out car can recover mid-race. Returns null when no gate has been
+   * passed yet (caller should fall back to the global spawn).
+   * @returns {{position:{x:number,z:number}, heading:number}|null}
+   */
+  get lastCheckpointPose() {
+    const idx = this.lastPassedGateIndex;
+    if (idx < 0) return null;
+    const gate = this.gates[idx];
+    if (!gate) return null;
+    // Heading matches how spawn headings are derived elsewhere: atan2(fx, fz).
+    const heading = Math.atan2(gate.forward.x, gate.forward.z);
+    return {
+      position: { x: gate.position.x, z: gate.position.z },
+      heading,
+    };
+  }
+
   // ---- Presentation getters --------------------------------------------------
 
   /** 1-based current lap for display, clamped to totalLaps. */
