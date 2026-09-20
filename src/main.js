@@ -1,13 +1,13 @@
 /**
  * main.js
  *
- * Minimal engine bootstrap for FEAT-001. Builds a lit, shadowed scene with a
- * ground plane and a placeholder box, wires the chase camera to the box, and
- * spins the box inside the fixed-timestep loop. Later features replace the
- * placeholder with the real car and track.
+ * Engine + game bootstrap. Builds a lit, shadowed scene with a flat ground,
+ * creates the physics world and a real drivable Car, then wires the fixed-step
+ * loop so input drives the car, the physics world advances, and the chase
+ * camera follows the car each render. The real track arrives in FEAT-003.
  *
- * Runs in the browser only. Bare specifiers ("three") resolve via the
- * importmap in index.html, so this file cannot be imported by Node.
+ * Runs in the browser only. Bare specifiers ("three", "cannon-es") resolve via
+ * the importmap in index.html, so this file cannot be imported by Node.
  */
 import * as THREE from "three";
 import { CONFIG } from "./config.js";
@@ -15,6 +15,10 @@ import { RenderEngine } from "./engine/renderer.js";
 import { ChaseCamera } from "./engine/camera.js";
 import { InputManager } from "./engine/input.js";
 import { GameLoop } from "./engine/loop.js";
+import { PhysicsWorld } from "./physics/world.js";
+import { Car } from "./game/car.js";
+
+const SPAWN = { x: 0, y: 1.5, z: 0 };
 
 function boot() {
   const canvas = document.getElementById("game");
@@ -30,11 +34,10 @@ function boot() {
 
   buildEnvironment(engine.scene);
 
-  const box = buildPlaceholderCar();
-  engine.scene.add(box);
+  // Physics world + player car (replaces the FEAT-001 placeholder box).
+  const physics = new PhysicsWorld();
+  const car = new Car(engine.scene, physics, SPAWN);
 
-  // Placeholder motion state driven by the loop.
-  let heading = 0;
   let firstFrameShown = false;
 
   const loop = new GameLoop({
@@ -43,22 +46,18 @@ function boot() {
     onUpdate: (dt) => {
       const state = input.getState();
 
-      // Simple placeholder kinematics so the camera has something to chase:
-      // steer rotates the box, throttle drives it forward along its heading.
-      heading += state.steer * 1.4 * dt;
-      const speed = (state.throttle - state.brake) * 12; // m/s
-      box.position.x += Math.sin(heading) * speed * dt;
-      box.position.z += Math.cos(heading) * speed * dt;
-      box.rotation.y = heading;
-      box.rotation.x = 0;
-
       if (state.reset) {
-        box.position.set(0, 0.6, 0);
-        heading = 0;
-        chaseCamera.snap(box.position, heading);
+        car.reset(SPAWN);
+        chaseCamera.snap(car.position, car.heading);
       }
 
-      chaseCamera.update(box.position, heading, speed, dt);
+      // Set vehicle controls, then advance the simulation for this fixed step.
+      car.update(dt, state);
+      physics.step(dt);
+      // Re-sync visuals to the freshly solved transforms.
+      car.sync();
+
+      chaseCamera.update(car.position, car.heading, car.speedKmh / 3.6, dt);
     },
     onRender: () => {
       engine.render();
@@ -70,12 +69,13 @@ function boot() {
     },
   });
 
-  chaseCamera.snap(box.position, heading);
+  chaseCamera.snap(car.position, car.heading);
   loop.start();
 }
 
 function buildEnvironment(scene) {
-  // Ground plane.
+  // Ground plane (visual). The physics ground is an infinite plane in
+  // PhysicsWorld; this mesh is just what the player sees.
   const groundGeo = new THREE.PlaneGeometry(
     CONFIG.world.groundSize,
     CONFIG.world.groundSize,
@@ -107,20 +107,6 @@ function buildEnvironment(scene) {
   cam.top = 120;
   cam.bottom = -120;
   scene.add(sun);
-}
-
-function buildPlaceholderCar() {
-  const geo = new THREE.BoxGeometry(1.9, 0.9, 4.0);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xd23f3f,
-    roughness: 0.4,
-    metalness: 0.3,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(0, 0.6, 0);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
 }
 
 if (typeof document !== "undefined") {
