@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Scaffold the no-build ES-module project and engine core, plus the offline verification harness. This establishes the runtime shape (importmap CDN loading), the render/loop/input engine layer, the central config module, and the sandbox verification tooling that all later features depend on. Independent of game-specific logic.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Create index.html at workspace root with: (a) a <script type=\"importmap\"> mapping bare specifiers to jsDelivr ESM builds: \"three\" -> https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js, \"three/addons/\" -> https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/, and \"cannon-es\" -> https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js ; (b) a full-window <canvas id=\"game\"> or <div id=\"app\"> mount; (c) placeholder HUD DOM containers (#hud with speedometer, lap timer, lap counter, best-lap elements) and a #countdown overlay and a #loading overlay; (d) <script type=\"module\" src=\"./src/main.js\">. Link styles.css.",
     "Create styles.css: full-viewport canvas (margin 0, overflow hidden), HUD styling (fixed corners, monospace speedometer, semi-transparent panels), centered countdown overlay with large text, loading overlay shown until first frame.",
