@@ -168,3 +168,58 @@ body {
   font-weight: 600;
   color: #f4f7ff;
 }
+
+/* Finish panel */
+#finish-panel {
+  z-index: 30;
+  background: radial-gradient(circle at 50% 40%, rgba(16, 24, 40, 0.85), rgba(5, 7, 13, 0.92) 70%);
+  pointer-events: auto;
+}
+
+.finish-card {
+  text-align: center;
+  padding: 36px 52px;
+  background: rgba(10, 16, 28, 0.72);
+  border: 1px solid rgba(120, 160, 220, 0.28);
+  border-radius: 18px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 60px rgba(0, 0, 0, 0.55);
+}
+
+.finish-title {
+  margin: 0 0 22px;
+  font-size: 52px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #57c7ff;
+  text-shadow: 0 0 28px rgba(87, 199, 255, 0.6);
+}
+
+.finish-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 40px;
+  margin: 10px 0;
+}
+
+.finish-label {
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8ea3c8;
+}
+
+.finish-value {
+  font-family: "Consolas", "SFMono-Regular", "Menlo", monospace;
+  font-size: 26px;
+  font-weight: 700;
+  color: #f4f7ff;
+}
+
+.finish-hint {
+  margin: 26px 0 0;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: #9fb2d6;
+}

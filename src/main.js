@@ -1,10 +1,18 @@
 /**
  * main.js
  *
- * Engine + game bootstrap. Builds a lit, shadowed scene with a flat ground,
- * creates the physics world and a real drivable Car, then wires the fixed-step
- * loop so input drives the car, the physics world advances, and the chase
- * camera follows the car each render. The real track arrives in FEAT-003.
+ * Full game bootstrap. Builds a lit, shadowed scene, the physics world, the
+ * designed race track (road + barriers + start/finish), and a drivable Car
+ * spawned at the track's start line. It then wires the fixed-step loop so:
+ *
+ *   fixed update: read input -> (controls gated by the race director) advance
+ *     the car + physics -> sync visuals -> feed the car position to the race
+ *     director, which drives the countdown, ordered checkpoints, lap timing,
+ *     best-lap tracking and the finish transition.
+ *   render:       update the chase camera and the DOM HUD.
+ *
+ * R resets the car to the track spawn during a race, and restarts the race from
+ * the countdown once finished.
  *
  * Runs in the browser only. Bare specifiers ("three", "cannon-es") resolve via
  * the importmap in index.html, so this file cannot be imported by Node.
@@ -17,13 +25,14 @@ import { InputManager } from "./engine/input.js";
 import { GameLoop } from "./engine/loop.js";
 import { PhysicsWorld } from "./physics/world.js";
 import { Car } from "./game/car.js";
-
-const SPAWN = { x: 0, y: 1.5, z: 0 };
+import { Track } from "./game/track.js";
+import { RaceDirector, RacePhase } from "./game/raceState.js";
+import { Hud } from "./game/hud.js";
 
 function boot() {
   const canvas = document.getElementById("game");
   const loadingOverlay = document.getElementById("loading");
-  const hud = document.getElementById("hud");
+  const hudEl = document.getElementById("hud");
 
   const engine = new RenderEngine(canvas);
   engine.attachResize();
@@ -32,11 +41,18 @@ function boot() {
   const input = new InputManager(window);
   input.attach();
 
-  buildEnvironment(engine.scene);
+  buildLighting(engine.scene);
 
-  // Physics world + player car (replaces the FEAT-001 placeholder box).
+  // Physics world + designed track (road, barriers, checkpoints) + player car.
   const physics = new PhysicsWorld();
-  const car = new Car(engine.scene, physics, SPAWN);
+  const track = new Track(engine.scene, physics);
+  const car = new Car(engine.scene, physics, track.spawn);
+  spawnOnTrack(car, chaseCamera, track);
+
+  // Race director owns lap state, ordered checkpoints, timing and the finish.
+  const race = new RaceDirector(track.checkpointCount, track.gates);
+  const hud = new Hud(document);
+  race.seedPosition(car.position);
 
   let firstFrameShown = false;
 
@@ -47,65 +63,84 @@ function boot() {
       const state = input.getState();
 
       if (state.reset) {
-        car.reset(SPAWN);
-        chaseCamera.snap(car.position, car.heading);
+        if (race.phase === RacePhase.FINISHED) {
+          spawnOnTrack(car, chaseCamera, track);
+          race.restart();
+          race.seedPosition(car.position);
+        } else {
+          spawnOnTrack(car, chaseCamera, track);
+          race.seedPosition(car.position);
+        }
       }
 
-      // Set vehicle controls, then advance the simulation for this fixed step.
-      car.update(dt, state);
+      // Controls are locked during LOADING/COUNTDOWN/FINISHED: feed a neutral
+      // input so the car holds still until GO.
+      const controls = race.controlsLocked ? NEUTRAL_INPUT : state;
+
+      car.update(dt, controls);
       physics.step(dt);
-      // Re-sync visuals to the freshly solved transforms.
       car.sync();
+
+      // Advance the race clock + ordered checkpoint detection.
+      race.update(dt, car.position);
 
       chaseCamera.update(car.position, car.heading, car.speedKmh / 3.6, dt);
     },
     onRender: () => {
       engine.render();
+      hud.update(car, race);
+
       if (!firstFrameShown) {
         firstFrameShown = true;
         if (loadingOverlay) loadingOverlay.classList.add("hidden");
-        if (hud) hud.classList.remove("hidden");
+        if (hudEl) hudEl.classList.remove("hidden");
+        // Kick off the pre-race countdown once the first frame is on screen.
+        race.beginCountdown();
       }
     },
   });
 
-  chaseCamera.snap(car.position, car.heading);
   loop.start();
 }
 
-function buildEnvironment(scene) {
-  // Ground plane (visual). The physics ground is an infinite plane in
-  // PhysicsWorld; this mesh is just what the player sees.
-  const groundGeo = new THREE.PlaneGeometry(
-    CONFIG.world.groundSize,
-    CONFIG.world.groundSize,
-  );
-  const groundMat = new THREE.MeshStandardMaterial({
-    color: CONFIG.world.groundColor,
-    roughness: 0.95,
-    metalness: 0.0,
-  });
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
+const NEUTRAL_INPUT = Object.freeze({
+  throttle: 0,
+  brake: 0,
+  steer: 0,
+  handbrake: false,
+  reset: false,
+  pause: false,
+});
 
+/** Place the car at the track spawn, facing along the track, and snap camera. */
+function spawnOnTrack(car, chaseCamera, track) {
+  // Build a yaw-only quaternion (about +Y) matching the spawn heading, then use
+  // the vehicle's documented reset(position, quaternion) to teleport cleanly.
+  const half = track.spawnHeading / 2;
+  const quaternion = { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) };
+  car.vehicle.reset(track.spawn, quaternion);
+  car._steer = 0;
+  car.sync();
+  chaseCamera.snap(car.position, track.spawnHeading);
+}
+
+function buildLighting(scene) {
   // Ambient fill so shadowed faces are not pure black.
   const ambient = new THREE.HemisphereLight(0xbfd8ff, 0x3a4a2f, 0.7);
   scene.add(ambient);
 
   // Key directional light with shadow.
   const sun = new THREE.DirectionalLight(0xfff2d8, 1.6);
-  sun.position.set(60, 120, 40);
+  sun.position.set(80, 140, 60);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   const cam = sun.shadow.camera;
   cam.near = 1;
-  cam.far = 400;
-  cam.left = -120;
-  cam.right = 120;
-  cam.top = 120;
-  cam.bottom = -120;
+  cam.far = 500;
+  cam.left = -180;
+  cam.right = 180;
+  cam.top = 180;
+  cam.bottom = -180;
   scene.add(sun);
 }
 

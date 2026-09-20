@@ -90,6 +90,62 @@ export const CONFIG = Object.freeze({
   race: Object.freeze({
     totalLaps: 3,
     countdownSeconds: 3,
+    // Milliseconds each countdown number (and the final "GO!") is displayed.
+    countdownIntervalMs: 1000,
+    goHoldMs: 700,
+  }),
+
+  track: Object.freeze({
+    // Half-width of the drivable road ribbon (metres). The full road is twice
+    // this wide. Barriers sit just outside the road edges.
+    roadHalfWidth: 9,
+    // Barrier dimensions (metres). Walls run along both road edges.
+    barrierHeight: 1.4,
+    barrierThickness: 0.8,
+    // How far each checkpoint gate reaches from the centerline to each side.
+    // Slightly wider than the road so a car anywhere on the tarmac triggers it.
+    checkpointHalfWidth: 11,
+    // Number of checkpoint gates placed evenly along the centerline (including
+    // the start/finish gate at index 0). Must be >= 2.
+    checkpointCount: 8,
+    // Visual road material colours.
+    roadColor: 0x2b2f38,
+    roadEdgeColor: 0xe8e8ec,
+    barrierColor: 0xb63b3b,
+    barrierAccentColor: 0xf2f2f5,
+    startLineColor: 0xf5f5f8,
+    // Height the car spawns above the road so it settles onto its wheels.
+    spawnHeight: 1.4,
+    // Closed-circuit centerline: a hand-designed loop with two long straights,
+    // a wide sweeper, a hairpin, and a couple of esses. Points are in metres on
+    // the XZ plane (y = 0). The list is a closed loop; the last point connects
+    // back to the first. Kept as a plain array (not frozen deeply) so the track
+    // builder can read it without cloning.
+    centerline: Object.freeze([
+      Object.freeze({ x: 0, z: 0 }),
+      Object.freeze({ x: 0, z: 60 }),
+      Object.freeze({ x: 0, z: 120 }),
+      Object.freeze({ x: 6, z: 168 }),
+      Object.freeze({ x: 28, z: 196 }),
+      Object.freeze({ x: 64, z: 204 }),
+      Object.freeze({ x: 100, z: 196 }),
+      Object.freeze({ x: 124, z: 168 }),
+      Object.freeze({ x: 130, z: 128 }),
+      Object.freeze({ x: 120, z: 96 }),
+      Object.freeze({ x: 96, z: 80 }),
+      Object.freeze({ x: 72, z: 76 }),
+      Object.freeze({ x: 52, z: 60 }),
+      Object.freeze({ x: 48, z: 32 }),
+      Object.freeze({ x: 64, z: 8 }),
+      Object.freeze({ x: 96, z: 0 }),
+      Object.freeze({ x: 120, z: -24 }),
+      Object.freeze({ x: 120, z: -64 }),
+      Object.freeze({ x: 96, z: -88 }),
+      Object.freeze({ x: 56, z: -92 }),
+      Object.freeze({ x: 20, z: -84 }),
+      Object.freeze({ x: 2, z: -56 }),
+      Object.freeze({ x: 0, z: -28 }),
+    ]),
   }),
 });
 

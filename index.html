@@ -62,6 +62,22 @@
       </div>
     </div>
 
+    <!-- Finish panel: shown when the final lap completes -->
+    <div id="finish-panel" class="overlay hidden">
+      <div class="finish-card">
+        <h1 class="finish-title">Finish!</h1>
+        <div class="finish-row">
+          <span class="finish-label">Total time</span>
+          <span id="finish-time" class="finish-value">0:00.000</span>
+        </div>
+        <div class="finish-row">
+          <span class="finish-label">Best lap</span>
+          <span id="finish-best" class="finish-value">--:--.---</span>
+        </div>
+        <p class="finish-hint">Press R to race again</p>
+      </div>
+    </div>
+
     <script type="module" src="./src/main.js"></script>
   </body>
 </html>
