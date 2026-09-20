@@ -101,6 +101,9 @@ export const CONFIG = Object.freeze({
   }),
 
   handling: Object.freeze({
+    // Rolling-resistance brake force applied while coasting (no throttle or
+    // brake held) so the car gently slows instead of freewheeling forever.
+    coastBrakeForce: 2,
     // Rear grip is scaled by this while drifting for a slidey feel.
     driftFrictionMultiplier: 0.55,
     // Rear grip while the handbrake is held (locks the rear loose).
@@ -159,6 +162,11 @@ export const CONFIG = Object.freeze({
     startLineColor: 0xf5f5f8,
     // Height the car spawns above the road so it settles onto its wheels.
     spawnHeight: 1.4,
+    // How far back along -forward (metres) the car is placed from a spawn or
+    // respawn point, so it crosses the line ahead of it cleanly instead of
+    // straddling it. Used by both the grid spawn and mid-race checkpoint
+    // recovery so the offset convention stays in one place.
+    spawnBackOffset: 6,
     // Closed-circuit centerline: a hand-designed loop with two long straights,
     // a wide sweeper, a hairpin, and a couple of esses. Points are in metres on
     // the XZ plane (y = 0). The list is a closed loop; the last point connects

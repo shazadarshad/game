@@ -9,6 +9,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RaceDirector } from "../src/game/raceState.js";
+import { CONFIG } from "../src/config.js";
+
+// The respawn pose is nudged back along -forward by this offset (mirroring the
+// grid spawn) so a recovery does not straddle the gate line.
+const BACK = CONFIG.track.spawnBackOffset;
 
 // Build simple axis-aligned gates around a square-ish loop. forward vectors use
 // the same convention as the game: heading = atan2(forward.x, forward.z).
@@ -38,7 +43,8 @@ test("after crossing the start line the last passed gate is 0", () => {
   race.lapState.nextCheckpoint = 1; // heading to gate 1 next
   assert.equal(race.lastPassedGateIndex, 0);
   const pose = race.lastCheckpointPose;
-  assert.deepEqual(pose.position, { x: 0, z: 0 });
+  // gate 0 at (0,0), forward (0,1): nudged back along -forward by BACK metres.
+  assert.deepEqual(pose.position, { x: 0, z: -BACK });
   // forward (0,1) => heading atan2(0,1) = 0.
   assert.ok(Math.abs(pose.heading - 0) < 1e-9);
 });
@@ -49,7 +55,8 @@ test("mid-lap the last passed gate is one before nextCheckpoint", () => {
   race.lapState.nextCheckpoint = 3; // gates 1 and 2 cleared
   assert.equal(race.lastPassedGateIndex, 2);
   const pose = race.lastCheckpointPose;
-  assert.deepEqual(pose.position, { x: 50, z: 50 });
+  // gate 2 at (50,50), forward (0,-1): nudged back along -forward (i.e. +z).
+  assert.deepEqual(pose.position, { x: 50, z: 50 + BACK });
   // forward (0,-1) => heading atan2(0,-1) = PI.
   assert.ok(Math.abs(Math.abs(pose.heading) - Math.PI) < 1e-9);
 });
@@ -60,5 +67,6 @@ test("nextCheckpoint 0 (all gates cleared) points back to the final gate", () =>
   race.lapState.nextCheckpoint = 0; // heading for start/finish to complete lap
   assert.equal(race.lastPassedGateIndex, 3);
   const pose = race.lastCheckpointPose;
-  assert.deepEqual(pose.position, { x: 50, z: 0 });
+  // gate 3 at (50,0), forward (-1,0): nudged back along -forward (i.e. +x).
+  assert.deepEqual(pose.position, { x: 50 + BACK, z: 0 });
 });

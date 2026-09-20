@@ -283,8 +283,9 @@ export class Track {
     const heading = Math.atan2(forward.x, forward.z);
     // Nudge the spawn a little back from the line so the car crosses gate 0
     // shortly after the countdown, starting the lap cleanly.
-    const backX = pts[0].x - forward.x * 6;
-    const backZ = pts[0].z - forward.z * 6;
+    const back = this.cfg.spawnBackOffset;
+    const backX = pts[0].x - forward.x * back;
+    const backZ = pts[0].z - forward.z * back;
     this.spawn = { x: backX, y: this.cfg.spawnHeight, z: backZ };
     this.spawnHeading = heading;
   }

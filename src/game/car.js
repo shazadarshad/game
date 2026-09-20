@@ -217,10 +217,12 @@ export class Car {
   }
 
   /**
-   * Advance the car for one fixed step. The caller is responsible for stepping
-   * the physics world itself; this method only sets vehicle controls and then
-   * (after the world step) should be followed by sync() via the same call, so
-   * we set controls here and sync visuals at the end using the latest solved
+   * Advance the car for one fixed step. This only sets the vehicle controls
+   * (steering, throttle/brake, drift grip) and updates the drift feedback; it
+   * does NOT step the physics world and does NOT copy transforms to the
+   * visuals. The caller must, in order: call update(dt, input), then step the
+   * physics world, then call sync() to copy the solved transforms onto the
+   * visuals. Keeping sync() out of update() avoids copying stale, pre-step
    * transforms.
    *
    * @param {number} dt fixed step seconds
@@ -254,7 +256,7 @@ export class Car {
       }
     } else {
       // Gentle engine braking / rolling resistance when coasting.
-      brakeForce = 2;
+      brakeForce = this.handling.coastBrakeForce;
     }
 
     this.vehicle.setThrottle(engineForce);
@@ -273,8 +275,6 @@ export class Car {
     }
 
     this._updateDrift(dt, input, speedKmh);
-
-    this.sync();
   }
 
   /**

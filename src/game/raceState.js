@@ -209,8 +209,18 @@ export class RaceDirector {
     if (!gate) return null;
     // Heading matches how spawn headings are derived elsewhere: atan2(fx, fz).
     const heading = Math.atan2(gate.forward.x, gate.forward.z);
+    // Nudge the pose back along -forward by the same offset the grid spawn uses
+    // (CONFIG.track.spawnBackOffset), so a mid-race recovery drops the car just
+    // behind the gate line rather than straddling the checkpoint it cleared.
+    const back = CONFIG.track.spawnBackOffset;
+    const fx = gate.forward.x;
+    const fz = gate.forward.z;
+    const len = Math.hypot(fx, fz) || 1;
     return {
-      position: { x: gate.position.x, z: gate.position.z },
+      position: {
+        x: gate.position.x - (fx / len) * back,
+        z: gate.position.z - (fz / len) * back,
+      },
       heading,
     };
   }
