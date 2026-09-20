@@ -1,0 +1,14 @@
+{
+  "name": "apex-circuit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Apex Circuit - a no-build 3D browser racing prototype (Three.js + Cannon-es via importmap). No npm install is required to run: serve the folder and open it in a browser with internet.",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "check": "node scripts/check.mjs",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

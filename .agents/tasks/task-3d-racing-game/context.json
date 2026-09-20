@@ -1,0 +1,27 @@
+{
+  "project_type": "Browser-based 3D racing game (vanilla JS, ES modules, no build step)",
+  "language": "JavaScript (ES2022 modules), HTML5, CSS3",
+  "build_system": "None. No-build static site. Libraries loaded at runtime via <script type=\"importmap\"> pointing at jsDelivr CDN. There is NO bundler and NO npm install step required to run the game.",
+  "test_framework": "Node's built-in test runner (node --test) for pure-logic unit tests (physics helpers, lap/checkpoint state machine, timer formatting). DOM/3D code is validated via node --check syntax validation and structural assertions, not headless render.",
+  "build_command": "No build required. Sanity check: run `node --check` over every file in src/ (script provided at scripts/check.mjs -> `node scripts/check.mjs`).",
+  "test_command": "node --test test/ (runs pure-logic unit tests). Plus `node scripts/check.mjs` for syntax validation of all modules.",
+  "verification_instructions": "1) Run `node scripts/check.mjs` to syntax-check every JS module (must exit 0). 2) Run `node --test test/` and confirm all logic tests pass. 3) Start a static server (`python3 -m http.server 8080` or `node scripts/serve.mjs`) and GET / -> expect HTTP 200 and index.html containing the importmap and #app canvas mount. Note: full 3D render cannot be verified headless in-sandbox because the CDN is unreachable under INTEGRATIONS_ONLY and there is no browser; this is expected. The end user with normal internet runs the same static server and the game loads the CDN libs in-browser.",
+  "snapshot_or_generated_files": "None. No generated or snapshot files.",
+  "setup_instructions": "End user: clone/download, then serve the folder with ANY static file server: `python3 -m http.server 8080` OR `npx serve` OR the bundled `node scripts/serve.mjs`, then open http://localhost:8080. No `npm install` needed. An optional package.json exposes `npm start` -> the bundled Node static server for convenience only (it has zero dependencies).",
+  "environment_constraints": "CRITICAL: network_mode = INTEGRATIONS_ONLY. The public npm registry returns 403 and ALL outbound network (unpkg, jsdelivr, esm.sh, github) fails with connection error (000) from the sandbox shell. Therefore: (a) NO npm install of Three.js/Cannon-es is possible in-sandbox; (b) CDN libs cannot be fetched in-sandbox. Chosen architecture avoids both: no-build importmap that resolves in the USER's browser (they have internet). In-sandbox verification is limited to Node syntax checks, pure-logic unit tests, and HTTP 200 static-serve checks. Node v22 + Python 3.9 available offline. IMPORTANT: node must be run with NODE_OPTIONS unset (env -u NODE_OPTIONS) because a proxy-bootstrap preload is configured but missing; scripts should not rely on NODE_OPTIONS.",
+  "contribution_requirements": "No repo docs exist yet (greenfield). Deliverable: complete runnable project at workspace root with README (how to run + controls) and clean tree ready for the orchestrator to commit/publish.",
+  "key_patterns": "ES module architecture with clear separation: engine/ (renderer, camera, input, loop), physics/ (cannon-es world + raycast vehicle wrapper), game/ (car, track, checkpoints, race state machine, HUD), and pure helpers in game/logic that are unit-testable without Three/Cannon. Import Three.js and Cannon-es via bare specifiers ('three', 'cannon-es') resolved by the importmap so the same import statements would also work under a future bundler. Keep all tunable handling constants in a single config module so arcade handling is easy to tweak and later phases (AI, sound, minimap) can be added as new modules subscribed to the game loop.",
+  "relevant_files": [
+    "index.html (importmap + canvas mount + HUD DOM + countdown overlay)",
+    "src/main.js (bootstrap: wire engine + game together)",
+    "src/config.js (all tunable constants: physics, handling, camera, track)",
+    "src/engine/renderer.js, src/engine/camera.js (chase cam), src/engine/input.js, src/engine/loop.js",
+    "src/physics/world.js, src/physics/vehicle.js (raycast vehicle)",
+    "src/game/car.js, src/game/track.js, src/game/checkpoints.js, src/game/raceState.js, src/game/hud.js",
+    "src/game/logic/ (pure functions: lapDetection, timer format, speed calc) - unit tested",
+    "test/*.test.js",
+    "scripts/check.mjs, scripts/serve.mjs",
+    "README.md"
+  ],
+  "directory_structure": "Workspace root /projects/sandbox: index.html, styles.css, README.md, package.json (optional, zero-dep), scripts/ (check.mjs, serve.mjs), src/ (config.js, main.js, engine/, physics/, game/, game/logic/), test/ (node --test logic tests)."
+}

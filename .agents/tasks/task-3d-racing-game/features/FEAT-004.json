@@ -1,0 +1,31 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "Visual and gameplay polish, extensibility hooks for future phases, and full documentation. Adds lighting/shadows/skybox quality, drift/skid feedback, reset behavior refinement, and a README covering how to run (offline-aware) and how to play. Depends on FEAT-003.",
+  "status": "pending",
+  "steps": [
+    "Polish lighting and environment in src/engine/renderer.js / a new src/game/environment.js: a directional 'sun' light with shadow camera framed to the track, ambient/hemisphere fill light, a procedural gradient/skybox (THREE.Scene.background via a large sky dome or gradient shader / equirect-free gradient texture generated on a canvas so it needs no network asset), subtle fog matched to sky color, and tone mapping (ACESFilmic) + sRGB output. Ensure the car and barriers cast/receive shadows.",
+    "Add drift/skid feedback in src/game/car.js: detect lateral slip (compare velocity direction vs chassis forward, or wheel skid from the raycast vehicle) and when drifting/handbraking, spawn tire skid marks (decals/quads on the road) and/or a simple particle/emissive puff, and tilt/lean the car body slightly for arcade feel. Keep it lightweight and pooled so it does not leak objects. All thresholds from CONFIG.handling.",
+    "Refine reset/respawn: R during RACING returns the car to the last passed checkpoint (position + heading, zeroed velocity) rather than the global spawn, so a spin-out is recoverable; R on FINISHED restarts the whole race (re-run countdown). Confirm controls remain locked during countdown.",
+    "Add extensibility hooks so later phases layer cleanly without refactors: define a lightweight system registry in the game loop (e.g. an array of {update(dt, ctx), render(alpha, ctx)} systems) and document how an OpponentAI system, AudioSystem, Minimap, and additional cars would register. Add a src/systems/README or top-of-file comments describing the extension contract. Do NOT implement AI/sound/minimap now, just the seams.",
+    "Write README.md at workspace root: project overview; EXACT run instructions emphasizing NO install/build is needed and offering three ways to serve (`python3 -m http.server 8080`, `npx serve`, or `npm start` -> node scripts/serve.mjs) then open http://localhost:8080; explain the importmap/CDN approach and that an internet connection is required the first time the browser loads Three.js/Cannon-es from jsDelivr; document the sandbox/offline note (why it could not be rendered headless here); CONTROLS section (W/Up throttle, S/Down brake-reverse, A/D or Left/Right steer, Space handbrake/drift, R reset/restart); a 'Tuning' section pointing at src/config.js; an architecture/directory overview; and a 'Roadmap / Phase 2+' section listing opponent AI, sound, minimap, multiple cars, upgrades and how the system-registry seams support them. No em dashes anywhere.",
+    "Add a .gitignore (node_modules, logs, .DS_Store, editor dirs) even though there are no deps, so the tree is clean if the user later runs npm.",
+    "Final self-check: run scripts/check.mjs and node --test and ensure everything is green."
+  ],
+  "acceptance_criteria": [
+    "`node scripts/check.mjs` exits 0 and `node --test test/` passes all tests after polish changes",
+    "renderer/environment configures shadows, a procedurally generated (no-network) skybox/gradient background, fog, and ACESFilmic tone mapping; car and barriers cast/receive shadows (verifiable structurally)",
+    "car.js implements drift detection tied to CONFIG.handling and spawns pooled skid feedback; R resets to last checkpoint during race and restarts on finish",
+    "README.md exists with exact run instructions (no install needed), the CDN/offline note, a CONTROLS section, a Tuning section pointing at src/config.js, and a Phase 2+ roadmap; contains no em dashes",
+    "A system/extension seam exists in the loop with documented contract for future AI/audio/minimap systems",
+    ".gitignore present"
+  ],
+  "verification": [
+    "Run `node scripts/check.mjs` (must exit 0)",
+    "Run `node --test test/` (all tests pass)",
+    "Serve with scripts/serve.mjs and confirm GET / returns 200",
+    "Grep README.md to confirm CONTROLS, Tuning, and Roadmap sections exist and confirm no em dash character is present"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

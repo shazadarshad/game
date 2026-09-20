@@ -1,0 +1,28 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Physics world, drivable car with raycast-vehicle handling, and the third-person chase camera following the car. Replaces the FEAT-001 placeholder box with a real, keyboard-controllable vehicle featuring suspension, grip, acceleration, braking, and drift. Depends on FEAT-001 engine core and config.",
+  "status": "pending",
+  "steps": [
+    "Create src/physics/world.js: wraps a CANNON.World (import * as CANNON from 'cannon-es'), sets gravity from CONFIG.physics.gravity, broadphase, solver iterations, a default contact material, and a static ground body (plane) sized to CONFIG.world.groundSize. Exposes world, step(dt, subSteps), and helpers addBody/removeBody. Keep the Three<->Cannon sync (copy position/quaternion) in a small syncMesh(mesh, body) helper.",
+    "Create src/physics/vehicle.js: builds a CANNON.RaycastVehicle on a chassis body using CONFIG.vehicle. Adds 4 wheels with suspension (stiffness, rest length, max travel, compression, relaxation), friction slip, and correct connection points. Exposes methods: setThrottle(force), setBrake(force), setSteer(angle), setHandbrake(bool), reset(position, quaternion), and getters for speed (m/s and km/h derived), chassis position/quaternion, and per-wheel transforms for rendering. Handle applyEngineForce to rear (or all) wheels and setSteeringValue to front wheels.",
+    "Create src/game/car.js: the Car class that owns (a) a Three.js visual model built from primitives (body box with beveled proportions, cabin, 4 wheel cylinders, simple bumpers/spoiler, headlights as small emissive meshes) grouped under a THREE.Group and casting shadows, and (b) a physics vehicle from src/physics/vehicle.js. update(dt, input) reads the input state, converts to engine force / steering (with smoothed steering via CONFIG.vehicle.steerSpeed), applies handbrake (reduces rear friction per CONFIG.handling for drift), steps handled by the physics world, then syncs the visual group + wheel meshes to the physics transforms. Expose speedKmh, position, heading (yaw), and reset(spawn).",
+    "Update src/main.js: create the physics world, create the Car at a spawn point, remove the placeholder box, feed input.getState() into car.update each fixed step, step the physics world in the loop's fixed update, and drive ChaseCamera from car.position + car.heading each render. Keep the temporary flat ground for now (real track comes in FEAT-003). Bind R to car.reset(spawn).",
+    "Add pure handling helpers in src/game/logic/handling.js: e.g. steerTowards(current, target, maxDelta) for smoothed steering and kmhFromMs(ms). Add test/handling.test.js (node --test) covering steerTowards clamps to maxDelta and converges, and kmhFromMs(10) approx 36.",
+    "Ensure all new modules import three / cannon-es via the bare specifiers resolved by the importmap so no code change is needed later under a bundler."
+  ],
+  "acceptance_criteria": [
+    "`node scripts/check.mjs` exits 0 with the new physics/ and game/ modules included",
+    "`node --test test/` passes handling tests (steerTowards, kmhFromMs) in addition to prior tests",
+    "src/game/car.js exposes update(dt,input), reset(spawn), speedKmh, position, heading; src/physics/vehicle.js builds a CANNON.RaycastVehicle with 4 wheels using CONFIG.vehicle values (verifiable by grep/AST for RaycastVehicle, addWheel x4, applyEngineForce, setSteeringValue)",
+    "main.js wires input -> car.update -> physics step -> chase camera and binds R to reset (no placeholder box remaining)"
+  ],
+  "verification": [
+    "Run `node scripts/check.mjs` (must exit 0)",
+    "Run `node --test test/` (all tests pass)",
+    "Confirm structurally that vehicle.js contains RaycastVehicle usage and 4 addWheel calls and that car.js consumes input state and CONFIG.handling (report the matching lines)",
+    "Serve with scripts/serve.mjs and confirm GET / still returns 200"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

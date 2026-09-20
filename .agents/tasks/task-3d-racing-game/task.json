@@ -1,0 +1,7 @@
+{
+  "task_id": "task-3d-racing-game",
+  "task_description": "Build a polished, genuinely playable 3D browser racing game prototype (Phase 1). Stack: Three.js (rendering) + Cannon-es raycast vehicle (arcade-leaning physics), vanilla JS ES modules with a NO-BUILD importmap/CDN setup (mandated by the INTEGRATIONS_ONLY sandbox where npm install and CDNs are unreachable in-sandbox but available to the end user). Deliver: lit/shadowed 3D scene with skybox, drivable car with suspension/grip/accel/drift, keyboard controls (WASD/arrows + handbrake + reset), a designed circuit with barriers and checkpoints, HUD (speedometer, lap timer, lap counter, best-lap), and a game loop with countdown start, checkpoint-based lap detection, and finish. Architecture uses a system-registry seam so later phases (opponent AI, sound, minimap, multiple cars, upgrades) layer in cleanly. Includes README with run instructions and controls.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004"],
+  "blocked_reason": null
+}

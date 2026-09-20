@@ -1,0 +1,29 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Race circuit with barriers and checkpoints, the lap/checkpoint state machine, HUD wiring, and the full game loop: countdown start, lap detection via ordered checkpoints, best-lap tracking, and finish. Turns the drivable car into an actual racing game. Depends on FEAT-002.",
+  "status": "pending",
+  "steps": [
+    "Create src/game/track.js: builds a designed closed circuit (not a plain oval; include a mix of straights and curves defined by a centerline array of points in CONFIG.track). Generate: (a) a road ribbon mesh from the centerline (extruded/triangulated strip) with a road material; (b) inner and outer barrier walls as Three meshes AND matching static CANNON bodies so the car collides with them; (c) start/finish line marker. Expose the centerline, spawn point + spawn heading, and a list of checkpoint gate definitions (position + forward normal + width) placed along the centerline (start/finish is checkpoint 0). Replace the temporary flat ground from earlier features (keep a large ground plane underneath for context/skybox floor).",
+    "Create src/game/logic/lap.js: a PURE checkpoint/lap state machine (no Three/Cannon). Given the ordered list of checkpoint indices and the car position each tick, it detects gate crossings in order, rejects out-of-order/skipped checkpoints, increments lap count only when all checkpoints for a lap were hit and the car crosses start/finish, and records per-lap time and best lap. Expose functions like createRaceState(numCheckpoints, totalLaps), registerCheckpoint(state, index, timeMs), and a crossing test helper crossedGate(prevPos, currPos, gate) using segment/plane intersection. This is the core testable logic.",
+    "Create src/game/checkpoints.js: bridges track gate definitions + lap.js to the running game. Each fixed step it takes the car's previous and current position and calls crossedGate for the next expected gate; on a valid crossing it updates the race state via lap.js and (optionally) shows debug gate meshes. Emits events/callbacks: onCheckpoint, onLapComplete(lapTime, bestLap), onFinish.",
+    "Create src/game/raceState.js: the race director / game-state machine with states LOADING -> COUNTDOWN (3..2..1..GO using CONFIG) -> RACING -> FINISHED. During COUNTDOWN the car controls are locked; on GO controls unlock and lap timing starts. It owns current lap, total laps (CONFIG.race.totalLaps), current lap elapsed time, last lap, and best lap, and transitions to FINISHED when the final lap completes; supports restart (R from finish, or reset returns car to last checkpoint during race).",
+    "Create src/game/hud.js: reads race state each render frame and updates the DOM HUD from FEAT-001: speedometer (km/h from car.speedKmh, integer), current lap timer (formatLapTime), lap counter 'LAP X/Y', best-lap display, and the countdown overlay text (3/2/1/GO) and a finish panel showing total time + best lap with a restart hint. No Three imports; pure DOM updates.",
+    "Update src/main.js to assemble the full game: build track (add road + barriers + checkpoints to scene/world), spawn car at track spawn, create raceState + checkpoints bridge + hud, run the loop so that: fixed update steps physics + car (controls gated by raceState) + checkpoints; render updates chase camera + hud. Wire R to reset-to-track behavior and restart-on-finish.",
+    "Extend tests: test/lap.test.js (node --test) covering: in-order checkpoint sequence completes a lap and increments lap count; out-of-order/skipped checkpoint is ignored; crossedGate returns true when the segment prevPos->currPos crosses the gate plane within width and false otherwise; best lap updates only when a faster lap is recorded."
+  ],
+  "acceptance_criteria": [
+    "`node scripts/check.mjs` exits 0 including track/checkpoints/raceState/hud modules",
+    "`node --test test/` passes lap.js tests (in-order lap completion, out-of-order rejection, crossedGate geometry, best-lap update) plus all prior tests",
+    "src/game/track.js exposes centerline, spawn, and checkpoint gate list and creates barrier CANNON bodies (verifiable structurally); raceState.js implements LOADING/COUNTDOWN/RACING/FINISHED transitions",
+    "hud.js updates speedometer, lap timer, lap counter, best-lap, countdown, and finish panel DOM elements that exist in index.html"
+  ],
+  "verification": [
+    "Run `node scripts/check.mjs` (must exit 0)",
+    "Run `node --test test/` (all tests pass, including new lap.test.js)",
+    "Structurally confirm raceState has the four states and checkpoints.js calls the pure lap.js crossing/registration functions (report matching lines)",
+    "Serve with scripts/serve.mjs and confirm GET / returns 200 and index.html still contains HUD + countdown containers"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
