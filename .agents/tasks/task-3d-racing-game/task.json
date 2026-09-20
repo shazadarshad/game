@@ -1,7 +1,14 @@
 {
   "task_id": "task-3d-racing-game",
   "task_description": "Build a polished, genuinely playable 3D browser racing game prototype (Phase 1). Stack: Three.js (rendering) + Cannon-es raycast vehicle (arcade-leaning physics), vanilla JS ES modules with a NO-BUILD importmap/CDN setup (mandated by the INTEGRATIONS_ONLY sandbox where npm install and CDNs are unreachable in-sandbox but available to the end user). Deliver: lit/shadowed 3D scene with skybox, drivable car with suspension/grip/accel/drift, keyboard controls (WASD/arrows + handbrake + reset), a designed circuit with barriers and checkpoints, HUD (speedometer, lap timer, lap counter, best-lap), and a game loop with countdown start, checkpoint-based lap detection, and finish. Architecture uses a system-registry seam so later phases (opponent AI, sound, minimap, multiple cars, upgrades) layer in cleanly. Includes README with run instructions and controls.",
-  "status": "in_progress",
+  "status": "completed",
   "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004"],
-  "blocked_reason": null
+  "blocked_reason": null,
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "pass",
+    "docker_build": "skipped",
+    "summary": "No-build project: `node scripts/check.mjs` syntax-checks all 22 modules and validates index.html (importmap three+cannon-es, mount, #hud) -> exit 0. `node --test` runs 43 unit tests, all pass, covering pure logic: cameraMath, format, loop, handling (steer/kmh), lap (in-order lap completion, out-of-order/shortcut rejection, crossedGate segment/plane geometry, best-lap), drift (lateralSlip/isDrifting/driftIntensity), systems registry, and mid-race respawn pose. Test quality verified by reading drift.js + lap.js + respawn.test.js: tests exercise real code paths and would fail if the implementation were reverted (not static assertions). Static server verified: GET / -> 200, GET /src/main.js -> 200 with application/javascript, HTML contains the cannon-es importmap entry. No em dashes anywhere in the tree. Docker: no Dockerfile and INTEGRATIONS_ONLY blocks image pulls, so docker build is skipped by design. Full 3D render cannot be verified headless in-sandbox (no browser + CDN unreachable under INTEGRATIONS_ONLY); libraries resolve via the importmap in the end user's browser, which is the documented and intended runtime."
+  }
 }
