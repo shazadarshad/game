@@ -76,6 +76,18 @@ function boot() {
   const audioSystem = new AudioSystem();
   startAudioOnFirstGesture(window, audioSystem);
 
+  // Release the resize listener and any AudioContext/oscillator nodes when
+  // the page is torn down (navigation, reload, tab close). There is no
+  // in-page teardown/restart path today (R re-uses the same engine/audio
+  // instances for the whole page lifetime), but wiring this up keeps the
+  // two dispose()/detachResize() cleanup methods exercised and correct for
+  // whenever an in-page teardown path is added, rather than leaving them
+  // unreferenced dead code.
+  window.addEventListener("beforeunload", () => {
+    engine.detachResize();
+    audioSystem.dispose();
+  });
+
   let firstFrameShown = false;
 
   // Shared context handed to any registered systems (see loop.js extension
