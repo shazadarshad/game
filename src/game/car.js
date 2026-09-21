@@ -17,6 +17,171 @@ import { steerTowards, kmhFromMs } from "./logic/handling.js";
 import { lateralSlip, isDrifting, driftIntensity } from "./logic/drift.js";
 import { SkidMarks } from "./skidmarks.js";
 
+// ---- Procedural car model builders (module-local) --------------------------
+//
+// Everything below builds Three.js geometry from primitives/extruded shapes at
+// runtime; no external model file is loaded. `he` is always the chassis
+// half-extents object (x = half-width, y = half-height, z = half-length) from
+// CONFIG.vehicle.chassisHalfExtents, so the visual model always matches the
+// physics collision box's footprint.
+
+/**
+ * Build the main body shell as a single extruded shape: a side-profile curve
+ * (front bumper -> hood -> windshield rake -> roof -> rear-window rake -> rear
+ * deck -> rear bumper) extruded across the car's width and centred. This
+ * replaces the flat box body with a silhouette that actually reads as a car.
+ *
+ * @param {{x:number,y:number,z:number}} he chassis half-extents (metres)
+ * @returns {THREE.BufferGeometry}
+ */
+function buildBodySilhouette(he) {
+  const halfLen = he.z * 0.98;
+  const lowY = -he.y * 0.7; // rocker/sill height
+  const hoodY = he.y * 0.15; // hood/deck height
+  const roofY = he.y * 1.55; // roof height
+
+  // Side-profile shape drawn in the X/Y-like plane that ExtrudeGeometry treats
+  // as (x, y) before extruding along +Z; we build it in (z, y) order instead
+  // so the extrusion depth becomes the car's width, then rotate/translate the
+  // resulting geometry into the car's actual X (width) / Y (height) / Z
+  // (length) axes below.
+  const shape = new THREE.Shape();
+  shape.moveTo(-halfLen, lowY);
+  shape.lineTo(-halfLen, hoodY * 0.4); // rear bumper face
+  shape.lineTo(-halfLen * 0.72, hoodY); // rear deck
+  shape.lineTo(-halfLen * 0.42, roofY * 0.98); // rear-window rake up to roof
+  shape.lineTo(halfLen * 0.12, roofY); // roof (slightly forward-biased cabin)
+  shape.lineTo(halfLen * 0.5, hoodY * 1.1); // windshield rake down to hood
+  shape.lineTo(halfLen * 0.86, hoodY * 0.5); // hood slope
+  shape.lineTo(halfLen, hoodY * 0.1); // front bumper top
+  shape.lineTo(halfLen, lowY); // front bumper face
+  shape.lineTo(-halfLen, lowY); // sill back to start
+
+  const width = he.x * 2 * 0.94;
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: width,
+    bevelEnabled: true,
+    bevelThickness: 0.05,
+    bevelSize: 0.05,
+    bevelSegments: 2,
+    curveSegments: 1,
+  });
+  // ExtrudeGeometry extrudes along +Z from the shape's local (x, y); our shape
+  // used (z, y) as (x, y), so after extrusion the geometry's local axes are
+  // (length, height, width). Rotate so the extrusion axis becomes the car's
+  // actual width axis (+X) and centre it left/right.
+  geo.rotateY(Math.PI / 2);
+  geo.translate(-width / 2, 0, 0);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Build the windshield and rear-window glass panes as simple angled planes
+ * sized to roughly fill the openings implied by the body silhouette above.
+ * Returned as plain descriptors (geometry + local position/rotation) so the
+ * caller can create the meshes with the shared glass material.
+ *
+ * @param {{x:number,y:number,z:number}} he chassis half-extents (metres)
+ * @returns {{geometry:THREE.BufferGeometry, position:THREE.Vector3, rotation:THREE.Euler}[]}
+ */
+function buildGlassPanes(he) {
+  const halfLen = he.z * 0.98;
+  const hoodY = he.y * 0.15;
+  const roofY = he.y * 1.55;
+  const width = he.x * 2 * 0.82;
+
+  const windshieldHeight = Math.hypot(halfLen * 0.5 - halfLen * 0.12, roofY - hoodY * 1.1);
+  const windshieldGeo = new THREE.PlaneGeometry(width, windshieldHeight);
+  const windshieldAngle = Math.atan2(
+    halfLen * 0.5 - halfLen * 0.12,
+    roofY - hoodY * 1.1,
+  );
+
+  const rearHeight = Math.hypot(halfLen * 0.42 - halfLen * 0.72, roofY * 0.98 - hoodY);
+  const rearGeo = new THREE.PlaneGeometry(width, rearHeight);
+  const rearAngle = Math.atan2(halfLen * 0.42 - halfLen * 0.72, roofY * 0.98 - hoodY);
+
+  return [
+    {
+      geometry: windshieldGeo,
+      position: new THREE.Vector3(0, (roofY + hoodY * 1.1) / 2 + 0.01, (halfLen * 0.5 + halfLen * 0.12) / 2),
+      rotation: new THREE.Euler(Math.PI / 2 - windshieldAngle, 0, 0),
+    },
+    {
+      geometry: rearGeo,
+      position: new THREE.Vector3(0, (roofY * 0.98 + hoodY) / 2 + 0.01, -(halfLen * 0.42 + halfLen * 0.72) / 2),
+      rotation: new THREE.Euler(-(Math.PI / 2 - rearAngle), 0, 0),
+    },
+  ];
+}
+
+/**
+ * Build one wheel assembly: a dark tire torus-ish cylinder, a lighter metal
+ * rim disc, four thin spokes and a small hub cap. Returned as a single Group
+ * so Car.sync() can position/orient it exactly as it did the old flat wheel
+ * mesh (same local origin at the wheel centre, axle along local X).
+ *
+ * @param {object} w CONFIG.vehicle.wheel
+ * @returns {THREE.Group}
+ */
+function buildWheelAssembly(w) {
+  const group = new THREE.Group();
+  const radius = w.radius;
+  const width = 0.34;
+
+  const tireMat = new THREE.MeshStandardMaterial({
+    color: 0x141416,
+    roughness: 0.85,
+    metalness: 0.05,
+  });
+  const rimMat = new THREE.MeshStandardMaterial({
+    color: 0xc9ccd2,
+    roughness: 0.35,
+    metalness: 0.75,
+  });
+  const hubMat = new THREE.MeshStandardMaterial({
+    color: 0x2a2c31,
+    roughness: 0.4,
+    metalness: 0.6,
+  });
+
+  const tireGeo = new THREE.CylinderGeometry(radius, radius, width, 20);
+  tireGeo.rotateZ(Math.PI / 2); // spin about local X (the axle)
+  const tire = new THREE.Mesh(tireGeo, tireMat);
+  tire.castShadow = true;
+  tire.receiveShadow = true;
+  group.add(tire);
+
+  // Rim: a slightly narrower, slightly smaller-radius disc sitting flush with
+  // the outer face of the tire on each side, so it reads as a wheel rim.
+  const rimRadius = radius * 0.68;
+  const rimGeo = new THREE.CylinderGeometry(rimRadius, rimRadius, width * 0.92, 16);
+  rimGeo.rotateZ(Math.PI / 2);
+  const rim = new THREE.Mesh(rimGeo, rimMat);
+  group.add(rim);
+
+  // Spokes: four thin boxes radiating from the hub across the wheel face.
+  // A box's long axis (rimRadius * 1.7) already runs along local Y, so
+  // rotating each mesh around the axle (local X) by 45/135/225/315 degrees
+  // fans them evenly across the wheel without needing to pre-rotate the
+  // shared geometry.
+  const spokeGeo = new THREE.BoxGeometry(width * 0.9, rimRadius * 1.7, 0.05);
+  for (let i = 0; i < 4; i++) {
+    const spoke = new THREE.Mesh(spokeGeo, hubMat);
+    spoke.rotation.x = Math.PI / 4 + (i * Math.PI) / 2;
+    group.add(spoke);
+  }
+
+  // Hub cap.
+  const hubGeo = new THREE.CylinderGeometry(radius * 0.18, radius * 0.18, width * 0.96, 12);
+  hubGeo.rotateZ(Math.PI / 2);
+  const hub = new THREE.Mesh(hubGeo, hubMat);
+  group.add(hub);
+
+  return group;
+}
+
 export class Car {
   /**
    * @param {THREE.Scene} scene
@@ -58,50 +223,71 @@ export class Car {
 
     const bodyMat = new THREE.MeshStandardMaterial({
       color: 0xd23f3f,
-      roughness: 0.35,
-      metalness: 0.35,
+      roughness: 0.32,
+      metalness: 0.55,
+      envMapIntensity: CONFIG.environment.envMapIntensity ?? 1,
     });
+    this._bodyMat = bodyMat;
     const trimMat = new THREE.MeshStandardMaterial({
       color: 0x1a1a1f,
-      roughness: 0.55,
-      metalness: 0.2,
+      roughness: 0.5,
+      metalness: 0.3,
     });
     const glassMat = new THREE.MeshStandardMaterial({
-      color: 0x223044,
-      roughness: 0.1,
-      metalness: 0.6,
+      color: 0x1c2636,
+      roughness: 0.08,
+      metalness: 0.75,
+      envMapIntensity: CONFIG.environment.envMapIntensity ?? 1,
     });
+    this._glassMat = glassMat;
 
-    // Main body: slightly narrower/lower than the collision box for a beveled
-    // silhouette. Lifted so the chassis collision offset lines up visually.
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(he.x * 2 * 0.92, he.y * 2 * 0.85, he.z * 2 * 0.96),
-      bodyMat,
-    );
-    body.position.y = 0.02;
+    // Sculpted body shell: an extruded silhouette (bumper -> hood -> windshield
+    // -> roof -> rear deck -> bumper) swept across the car's width, instead of
+    // a single box. This is the main visual upgrade over the placeholder box.
+    const body = new THREE.Mesh(buildBodySilhouette(he), bodyMat);
     this._shadow(body);
     this.bodyGroup.add(body);
 
-    // Cabin: shorter box set back and up, tinted glass look.
-    const cabin = new THREE.Mesh(
-      new THREE.BoxGeometry(he.x * 2 * 0.8, he.y * 2 * 0.7, he.z * 0.95),
-      glassMat,
-    );
-    cabin.position.set(0, he.y + 0.18, -0.1);
-    this._shadow(cabin);
-    this.bodyGroup.add(cabin);
+    // Angled glass panes set into the silhouette's windshield/rear-window
+    // openings, following the same profile curve, for a believable greenhouse
+    // rather than a floating box.
+    for (const pane of buildGlassPanes(he)) {
+      const mesh = new THREE.Mesh(pane.geometry, glassMat);
+      mesh.position.copy(pane.position);
+      mesh.rotation.copy(pane.rotation);
+      this.bodyGroup.add(mesh);
+    }
 
-    // Front and rear bumpers.
+    // Front and rear bumpers (separate trim pieces sit slightly outside the
+    // body shell for a panel-gap look).
     const bumperGeo = new THREE.BoxGeometry(he.x * 2 * 0.98, 0.22, 0.32);
     const frontBumper = new THREE.Mesh(bumperGeo, trimMat);
-    frontBumper.position.set(0, -he.y * 0.4, he.z - 0.1);
+    frontBumper.position.set(0, -he.y * 0.55, he.z - 0.08);
     this._shadow(frontBumper);
     this.bodyGroup.add(frontBumper);
 
     const rearBumper = new THREE.Mesh(bumperGeo, trimMat);
-    rearBumper.position.set(0, -he.y * 0.4, -he.z + 0.1);
+    rearBumper.position.set(0, -he.y * 0.55, -he.z + 0.08);
     this._shadow(rearBumper);
     this.bodyGroup.add(rearBumper);
+
+    // Side mirrors: a small box "head" on a thin stalk, mounted near the
+    // A-pillar on each side.
+    const mirrorStalkGeo = new THREE.BoxGeometry(0.06, 0.06, 0.22);
+    const mirrorHeadGeo = new THREE.BoxGeometry(0.16, 0.11, 0.24);
+    for (const sx of [-1, 1]) {
+      const stalk = new THREE.Mesh(mirrorStalkGeo, trimMat);
+      stalk.position.set(sx * (he.x + 0.08), he.y * 0.55, he.z * 0.32);
+      stalk.rotation.y = sx * 0.3;
+      this._shadow(stalk);
+      this.bodyGroup.add(stalk);
+
+      const head = new THREE.Mesh(mirrorHeadGeo, bodyMat);
+      head.position.set(sx * (he.x + 0.22), he.y * 0.58, he.z * 0.32);
+      head.rotation.y = sx * 0.3;
+      this._shadow(head);
+      this.bodyGroup.add(head);
+    }
 
     // Rear spoiler: a thin blade on two small uprights.
     const spoiler = new THREE.Mesh(
@@ -121,28 +307,38 @@ export class Car {
       this.bodyGroup.add(strut);
     }
 
-    // Emissive headlights so the front reads clearly in low light.
+    // Headlight/taillight clusters: a recessed dark housing with an emissive
+    // lens sitting slightly forward of it, so each reads as a light fixture
+    // rather than a flat glowing rectangle.
     const headMat = new THREE.MeshStandardMaterial({
       color: 0xfff6d0,
       emissive: 0xfff2c0,
-      emissiveIntensity: 1.4,
-      roughness: 0.3,
+      emissiveIntensity: 1.6,
+      roughness: 0.25,
     });
     const tailMat = new THREE.MeshStandardMaterial({
       color: 0xaa1414,
       emissive: 0xff2a2a,
-      emissiveIntensity: 1.1,
-      roughness: 0.3,
+      emissiveIntensity: 1.3,
+      roughness: 0.25,
     });
-    const lightGeo = new THREE.BoxGeometry(0.28, 0.18, 0.08);
+    const housingGeo = new THREE.BoxGeometry(0.32, 0.2, 0.1);
+    const lensGeo = new THREE.CylinderGeometry(0.08, 0.09, 0.06, 12);
+    lensGeo.rotateX(Math.PI / 2);
     for (const sx of [-1, 1]) {
-      const head = new THREE.Mesh(lightGeo, headMat);
-      head.position.set(sx * he.x * 0.6, 0.0, he.z - 0.02);
-      this.bodyGroup.add(head);
+      const headHousing = new THREE.Mesh(housingGeo, trimMat);
+      headHousing.position.set(sx * he.x * 0.6, 0.0, he.z - 0.05);
+      this.bodyGroup.add(headHousing);
+      const headLens = new THREE.Mesh(lensGeo, headMat);
+      headLens.position.set(sx * he.x * 0.6, 0.0, he.z + 0.01);
+      this.bodyGroup.add(headLens);
 
-      const tail = new THREE.Mesh(lightGeo, tailMat);
-      tail.position.set(sx * he.x * 0.6, 0.05, -he.z + 0.02);
-      this.bodyGroup.add(tail);
+      const tailHousing = new THREE.Mesh(housingGeo, trimMat);
+      tailHousing.position.set(sx * he.x * 0.6, 0.05, -he.z + 0.05);
+      this.bodyGroup.add(tailHousing);
+      const tailLens = new THREE.Mesh(lensGeo, tailMat);
+      tailLens.position.set(sx * he.x * 0.6, 0.05, -he.z - 0.01);
+      this.bodyGroup.add(tailLens);
     }
 
     // A light tire-smoke puff shown near the rear while drifting hard. A soft
@@ -151,26 +347,14 @@ export class Car {
     if (this.puff) this.bodyGroup.add(this.puff);
 
     // Wheels live in their own group because the raycast vehicle reports each
-    // wheel's world transform independently of the chassis.
+    // wheel's world transform independently of the chassis. Each wheel is now
+    // a small assembly: a dark tire, a lighter metal rim disc, thin spokes and
+    // a hub cap, instead of a single flat cylinder.
     this.wheelGroup = new THREE.Group();
     this.wheelMeshes = [];
     const w = this.cfg.wheel;
-    const wheelGeo = new THREE.CylinderGeometry(
-      w.radius,
-      w.radius,
-      0.34,
-      20,
-    );
-    // Cylinder axis is Y by default; rotate so it spins about X (the axle).
-    wheelGeo.rotateZ(Math.PI / 2);
-    const wheelMat = new THREE.MeshStandardMaterial({
-      color: 0x141416,
-      roughness: 0.8,
-      metalness: 0.1,
-    });
     for (let i = 0; i < 4; i++) {
-      const mesh = new THREE.Mesh(wheelGeo, wheelMat);
-      this._shadow(mesh);
+      const mesh = buildWheelAssembly(w);
       this.wheelMeshes.push(mesh);
       this.wheelGroup.add(mesh);
     }
