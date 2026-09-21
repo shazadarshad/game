@@ -419,6 +419,12 @@ export class Car {
    * @param {{throttle:number, brake:number, steer:number, handbrake:boolean}} input
    */
   update(dt, input) {
+    // Remember the last throttle input (for the audio system's engine-volume
+    // mapping); clamp defensively in case of odd input values.
+    this._throttle = Number.isFinite(input.throttle)
+      ? Math.min(1, Math.max(0, input.throttle))
+      : 0;
+
     // Poll the physics vehicle for the strongest collision impact recorded
     // since the last step. A hard enough hit spawns a spark burst at the
     // impact point and is exposed via `lastImpact` for main.js to forward to
@@ -501,6 +507,7 @@ export class Car {
     );
     this._drifting = drifting;
     const intensity = drifting ? driftIntensity(slip, this.handling) : 0;
+    this._driftIntensity = intensity;
 
     // Body lean: roll away from the steering direction for an arcade feel. Ease
     // the current lean toward the target so it does not snap.
@@ -545,6 +552,16 @@ export class Car {
   /** @returns {boolean} whether the car is currently drifting/sliding. */
   get drifting() {
     return this._drifting;
+  }
+
+  /** @returns {number} 0..1 current drift intensity (for tire-screech volume) */
+  get driftIntensity() {
+    return this._driftIntensity ?? 0;
+  }
+
+  /** @returns {number} last throttle input (0..1), for the audio system's engine-volume mapping */
+  get throttle() {
+    return this._throttle ?? 0;
   }
 
   /**

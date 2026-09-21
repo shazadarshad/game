@@ -33,6 +33,7 @@ import { Track } from "./game/track.js";
 import { RaceDirector, RacePhase } from "./game/raceState.js";
 import { Hud } from "./game/hud.js";
 import { buildEnvironment } from "./game/environment.js";
+import { AudioSystem } from "./game/audioSystem.js";
 
 function boot() {
   const canvas = document.getElementById("game");
@@ -67,17 +68,26 @@ function boot() {
   const hud = new Hud(document);
   race.seedPosition(car.position);
 
+  // Synthesized engine/tire-screech audio (Web Audio API, no audio files).
+  // Registered as a systems-registry system per src/systems/README.md so it
+  // layers on without any changes to the core update/render wiring below.
+  // Browsers block audio until a user gesture, so the AudioContext itself is
+  // only created inside startAudioOnFirstGesture()'s listener.
+  const audioSystem = new AudioSystem();
+  startAudioOnFirstGesture(window, audioSystem);
+
   let firstFrameShown = false;
 
   // Shared context handed to any registered systems (see loop.js extension
-  // seam and src/systems/README.md). Future OpponentAI / Audio / Minimap
-  // systems read the live game objects from here.
+  // seam and src/systems/README.md). Future OpponentAI / Minimap systems read
+  // the live game objects from here alongside AudioSystem.
   const context = { engine, scene: engine.scene, camera: chaseCamera, car, track, race, input };
 
   const loop = new GameLoop({
     step: CONFIG.physics.timestep,
     maxSubSteps: CONFIG.physics.maxSubSteps,
     context,
+    systems: [audioSystem],
     onUpdate: (dt) => {
       const state = input.getState();
 
@@ -133,6 +143,25 @@ function boot() {
   });
 
   loop.start();
+}
+
+/**
+ * Start the (synthesized, no audio files) AudioSystem on the first user
+ * gesture, satisfying the browser autoplay policy that blocks AudioContext
+ * creation/playback until a click/keydown/touchstart. Listens once and
+ * cleans itself up; safe to call even if the AudioSystem is disabled in
+ * config (start() itself is then a no-op).
+ * @param {Window} target
+ * @param {AudioSystem} audioSystem
+ */
+function startAudioOnFirstGesture(target, audioSystem) {
+  if (!target || !target.addEventListener) return;
+  const events = ["pointerdown", "keydown", "touchstart"];
+  const onGesture = () => {
+    audioSystem.start();
+    for (const evt of events) target.removeEventListener(evt, onGesture);
+  };
+  for (const evt of events) target.addEventListener(evt, onGesture, { once: false });
 }
 
 const NEUTRAL_INPUT = Object.freeze({
