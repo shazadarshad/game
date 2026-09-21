@@ -83,20 +83,25 @@ body {
 }
 
 #countdown-text {
+  display: inline-block;
   font-size: 22vh;
   font-weight: 800;
   color: #ffffff;
   text-shadow: 0 0 40px rgba(87, 199, 255, 0.75), 0 6px 24px rgba(0, 0, 0, 0.6);
-  animation: pop 0.4s ease-out;
+  animation: pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @keyframes pop {
   from {
-    transform: scale(0.4);
+    transform: scale(0.3) rotate(-4deg);
     opacity: 0;
   }
+  60% {
+    transform: scale(1.12) rotate(1deg);
+    opacity: 1;
+  }
   to {
-    transform: scale(1);
+    transform: scale(1) rotate(0deg);
     opacity: 1;
   }
 }
@@ -121,9 +126,6 @@ body {
 .hud-bottom-right {
   right: 24px;
   bottom: 24px;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
 }
 
 .hud-top-right {
@@ -132,19 +134,172 @@ body {
   min-width: 190px;
 }
 
+/* Dial-style speedometer -------------------------------------------------- */
+
+.dial-panel {
+  position: relative;
+  width: 220px;
+  height: 150px;
+  padding: 10px 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.dial-svg {
+  width: 200px;
+  height: 120px;
+  overflow: visible;
+}
+
+.dial-track {
+  fill: none;
+  stroke: rgba(120, 160, 220, 0.28);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+
+.dial-redline {
+  fill: none;
+  stroke: #e0453f;
+  stroke-width: 10;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+
+.dial-needle {
+  transform-origin: 100px 100px;
+  transition: transform 0.05s linear;
+}
+
+.dial-needle line {
+  stroke: #57c7ff;
+  stroke-width: 3;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px rgba(87, 199, 255, 0.85));
+}
+
+.dial-needle.redline line {
+  stroke: #ff5b4d;
+  filter: drop-shadow(0 0 6px rgba(255, 91, 77, 0.9));
+}
+
+.dial-needle circle {
+  fill: #f4f7ff;
+}
+
+.dial-readout {
+  position: absolute;
+  top: 62px;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
 .speedometer {
   font-family: "Consolas", "SFMono-Regular", "Menlo", monospace;
-  font-size: 56px;
+  font-size: 34px;
   font-weight: 700;
   line-height: 1;
   color: #57c7ff;
   text-shadow: 0 0 16px rgba(87, 199, 255, 0.55);
 }
 
+.speedometer.redline {
+  color: #ff5b4d;
+  text-shadow: 0 0 16px rgba(255, 91, 77, 0.65);
+}
+
 .speed-unit {
-  font-size: 16px;
+  font-size: 12px;
   color: #9fb2d6;
   letter-spacing: 0.06em;
+}
+
+.gear-indicator {
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(87, 199, 255, 0.16);
+  border: 1px solid rgba(87, 199, 255, 0.4);
+  color: #57c7ff;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.gear-indicator.reverse {
+  background: rgba(255, 91, 77, 0.16);
+  border-color: rgba(255, 91, 77, 0.45);
+  color: #ff5b4d;
+}
+
+/* Drift callout ------------------------------------------------------------ */
+
+.drift-callout {
+  position: fixed;
+  left: 50%;
+  bottom: 130px;
+  transform: translateX(-50%) scale(0.85);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #ffce54;
+  text-shadow: 0 0 18px rgba(255, 206, 84, 0.75), 0 4px 12px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+
+.drift-callout.show {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+
+/* Speed-line overlay -------------------------------------------------------- */
+
+.speed-lines {
+  z-index: 12;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    rgba(240, 246, 255, 0) 42%,
+    rgba(240, 246, 255, 0.5) 78%,
+    rgba(240, 246, 255, 0.85) 100%
+  );
+  transition: opacity 0.08s linear;
+}
+
+/* Finish panel lap list ----------------------------------------------------- */
+
+.finish-lap-list {
+  margin: 18px 0 0;
+  max-height: 160px;
+  overflow-y: auto;
+  font-family: "Consolas", "SFMono-Regular", "Menlo", monospace;
+  font-size: 14px;
+  color: #cdd9f0;
+}
+
+.finish-lap-list .lap-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(120, 160, 220, 0.15);
+}
+
+.finish-lap-list .lap-row.best {
+  color: #57c7ff;
 }
 
 .hud-row {

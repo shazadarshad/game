@@ -617,6 +617,11 @@ export class Car {
     return Math.abs(kmhFromMs(this.vehicle.speed));
   }
 
+  /** @returns {boolean} true when the car's signed speed is meaningfully negative (reversing), for the HUD gear indicator */
+  get reversing() {
+    return this.vehicle.speed < -0.5;
+  }
+
   /** @returns {THREE.Vector3} world position of the car body */
   get position() {
     return this.group.position;
