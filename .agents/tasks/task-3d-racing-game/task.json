@@ -10,5 +10,20 @@
     "test_quality": "pass",
     "docker_build": "skipped",
     "summary": "No-build project: `node scripts/check.mjs` syntax-checks all 22 modules and validates index.html (importmap three+cannon-es, mount, #hud) -> exit 0. `node --test` runs 43 unit tests, all pass, covering pure logic: cameraMath, format, loop, handling (steer/kmh), lap (in-order lap completion, out-of-order/shortcut rejection, crossedGate segment/plane geometry, best-lap), drift (lateralSlip/isDrifting/driftIntensity), systems registry, and mid-race respawn pose. Test quality verified by reading drift.js + lap.js + respawn.test.js: tests exercise real code paths and would fail if the implementation were reverted (not static assertions). Static server verified: GET / -> 200, GET /src/main.js -> 200 with application/javascript, HTML contains the cannon-es importmap entry. No em dashes anywhere in the tree. Docker: no Dockerfile and INTEGRATIONS_ONLY blocks image pulls, so docker build is skipped by design. Full 3D render cannot be verified headless in-sandbox (no browser + CDN unreachable under INTEGRATIONS_ONLY); libraries resolve via the importmap in the end user's browser, which is the documented and intended runtime."
+  },
+  "visual_audio_overhaul": {
+    "status": "completed",
+    "commits": ["89c3f76", "e4c2026", "5eda81f", "a4fdc3d", "2217642", "910ffa2"],
+    "post_review_fix_commits": ["bbe47f2", "175d3ee", "3984d27", "50c78b3"],
+    "verification": {
+      "build": "pass",
+      "tests": "pass (99/99, up from 87)",
+      "semantic_review": "APPROVED after fixes (see 2026-09-21-093250-review-visual-audio-overhaul.md); initial verdict was NEEDS_CHANGES with 5 non-blocking issues, all 5 addressed in the post-review fix commits",
+      "summary": "Full visual/audio overhaul: sculpted procedural car model, asphalt track texture + curbs + centerline, roadside scenery, sunset lighting + rim light + PMREM env map + optional bloom postprocessing (best-effort, degrades gracefully), collision sparks + camera screen-shake, launch/wheelspin dust puff, redesigned dial-speedometer HUD with drift callout/speed lines/finish lap list, and a synthesized Web Audio engine/tire-screech AudioSystem gated on a user gesture. All new deterministic math (dial, shake, audioMath incl. engineBrightness, scenery, speedfx, dust) lives in unit-tested src/game/logic/ pure modules. `node scripts/check.mjs` -> 30 modules OK. `node --test` -> 99/99 pass. No em dashes. Full 3D/audio rendering still cannot be verified headless in this sandbox (no browser, CDN unreachable); this is documented in the README exactly as the Phase 1 task documented it."
+    },
+    "known_limitations": [
+      "The car model, track texture, lighting/bloom/env-map, screen-shake feel, and synthesized audio were not visually/aurally verified in this sandbox (no browser, no audio device, CDN unreachable under INTEGRATIONS_ONLY); confidence is architectural and via code review, not observation. A manual browser smoke test is recommended.",
+      "The AudioSystem's autoplay-gesture handling and engine/tire-screech synthesis graph were reviewed by reading the code but not exercised (no Web Audio API in this sandbox)."
+    ]
   }
 }
