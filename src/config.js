@@ -224,11 +224,18 @@ export const CONFIG = Object.freeze({
       minImpactSpeed: 2.5,
       color: 0xffcf7a,
     }),
-    // Dust puffs kicked up off-road / on hard acceleration, reusing the same
-    // pooled-sprite approach as the existing tire-smoke puff.
+    // Dust puffs kicked up by wheelspin on a hard launch (high throttle from
+    // near-standstill), reusing the same pooled-sprite approach as the
+    // existing tire-smoke puff. See logic/dust.js#wheelspinIntensity for the
+    // pure trigger math; distinct from the drift smoke puff, which is keyed
+    // off lateral slip rather than throttle.
     dust: Object.freeze({
       enabled: true,
       color: 0xcabf9a,
+      // Throttle must be at or above this to start kicking up dust.
+      minThrottle: 0.6,
+      // Dust fades out once speed reaches this (km/h); a launch-only effect.
+      cutoffKmh: 45,
     }),
   }),
 
