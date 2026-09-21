@@ -43,7 +43,10 @@ Cannon-es) come from the CDN, exactly as before.
   if it fails to load).
 - **Effects**: speed-line screen vignette at high speed, collision sparks +
   camera screen-shake on hard wall hits, and a "DRIFT!" HUD callout, layered
-  on top of the existing pooled skid marks / tire smoke.
+  on top of the existing pooled skid marks / tire smoke. A separate dust puff
+  (`CONFIG.fx.dust`, `src/game/logic/dust.js`) kicks up on a hard launch/
+  wheelspin (high throttle from near-standstill), independent of the drift
+  smoke trigger.
 - **HUD**: a dial-style SVG speedometer (needle + redline arc) with a D/R gear
   indicator, replacing the plain number; a re-triggering countdown pop
   animation; a finish-panel per-lap time list.
@@ -163,8 +166,9 @@ so the feel is easy to adjust without hunting through the code:
   mark pool size / spacing / lifetime.
 - `scenery`: roadside tree/grandstand placement (spacing, offsets, sizes,
   colours) and the clearance kept beyond the barrier line.
-- `fx`: speed-line start/max speed and opacity, and the collision-spark pool
-  size / burst size / lifetime / minimum impact speed.
+- `fx`: speed-line start/max speed and opacity, the collision-spark pool
+  size / burst size / lifetime / minimum impact speed, and the launch/
+  wheelspin dust puff's throttle/speed trigger (`fx.dust`).
 - `hud`: the dial speedometer's max speed, sweep angles and redline fraction.
 - `audio`: master volume, engine idle/max pitch and volume, and tire-screech
   volume/attack/release.
@@ -216,6 +220,7 @@ src/
       dial.js         speedometer needle angle + SVG arc geometry
       shake.js        collision impact -> screen-shake trauma/offset
       audioMath.js    speed/throttle/drift -> oscillator frequency/gain
+      dust.js         throttle/speed -> launch/wheelspin dust intensity
       scenery.js      deterministic tree/grandstand placement along the track
       speedfx.js      speed -> speed-line overlay opacity
   systems/
@@ -224,7 +229,8 @@ scripts/
   check.mjs           syntax-checks every module + validates index.html
   serve.mjs           zero-dependency static file server
 test/                 node --test pure-logic tests (lap, handling, drift, loop,
-                      systems, respawn, dial, shake, audioMath, scenery, speedfx)
+                      systems, respawn, dial, shake, audioMath, dust, scenery,
+                      speedfx)
 ```
 
 ## Develop / verify
@@ -253,7 +259,9 @@ additions:
 - **Minimap**: a render system drawing the centerline and every car position to
   a 2D canvas overlay.
 - **Multiple cars**: extend the shared context with a `cars` list; the loop
-  already fans out to every system each step.
+  already fans out to every system each step. `Car.setBodyColor()` /
+  `setGlassColor()` already exist for giving each car a distinct livery
+  without rebuilding its geometry.
 - **Upgrades**: per-car tuning read from `src/config.js`, feeding the same
   vehicle and handling constants.
 
