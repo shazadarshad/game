@@ -39,14 +39,27 @@ export const CONFIG = Object.freeze({
     // of the fog so the gradient reads as a distant sky.
     skyRadius: 900,
     // Low-angle warm "sun" light for a dramatic sunset look, with soft edged
-    // shadows from the framed shadow camera below.
+    // shadows from the framed shadow camera below. Raised from the original
+    // y:70 (an ~20 degree grazing elevation) to y:120 (~31 degrees): still
+    // reads as a low sunset sun, but a shallower grazing angle combined with
+    // shadowNormalBias below removes the shadow acne that was flickering
+    // across the roadside trees/grandstands as the camera moved (a very low
+    // sun angle projects a shadow-map texel over a long, thin sliver of each
+    // curved/angled surface, so which side of the bias threshold a texel
+    // falls on flickers frame to frame).
     sunColor: 0xffb066,
     sunIntensity: 2.4,
-    sunPosition: Object.freeze({ x: 220, y: 70, z: -40 }),
+    sunPosition: Object.freeze({ x: 220, y: 120, z: -40 }),
     // Shadow camera orthographic half-size framed around the whole track.
     shadowCameraSize: 200,
     shadowMapSize: 2048,
-    shadowBias: -0.0004,
+    shadowBias: -0.0002,
+    // Slope-scaled shadow bias: pushes the shadow comparison depth back
+    // proportionally to how steep a surface faces the light, which fixes
+    // acne on curved/angled geometry (tree canopies, car curves) far more
+    // reliably than a flat depth bias alone. Paired with a smaller flat
+    // `shadowBias` above (was -0.0004) since the two stack.
+    shadowNormalBias: 0.045,
     // Hemisphere fill so shadowed faces are lit by sky/ground bounce. Warm
     // sky tint above, cool-ish ground bounce below for contrast.
     skyFillColor: 0xff9d6a,
@@ -113,9 +126,27 @@ export const CONFIG = Object.freeze({
     chassisHalfExtents: Object.freeze({ x: 0.95, y: 0.35, z: 2.0 }),
     chassisMassOffsetY: -0.35,
     suspension: Object.freeze({
-      stiffness: 32,
-      dampingRelaxation: 2.6,
-      dampingCompression: 4.6,
+      // Tuned so the suspension only uses ~32% of its travel budget just
+      // sitting at rest under CONFIG.physics.gravity, leaving real headroom
+      // for bumps/braking dive/landings before bottoming out. cannon-es's
+      // RaycastVehicle resolves suspension force per wheel as
+      // stiffness * compression * chassisMass (see updateSuspension), so at
+      // equilibrium: compression = |gravity| / (wheelCount * stiffness).
+      // With gravity=-19.6 and stiffness=55 that is ~0.089 m, i.e. ~32% of
+      // maxTravel (0.28 m) below. A lower stiffness (the previous 32) used
+      // ~55% of that budget at rest, so any dynamic load (a bump, braking
+      // nose-dive, landing) pushed it straight through the remaining travel
+      // and bottomed out every time, which read as the suspension
+      // "bouncing"/jittering instead of absorbing bumps.
+      stiffness: 55,
+      // Damping ratio = damping / (2 * sqrt(stiffness)). At stiffness=55
+      // (sqrt ~7.42), dampingCompression=11 gives ratio ~0.74 (well damped,
+      // absorbs hits without oscillating back out) and dampingRelaxation=6.5
+      // gives ratio ~0.44 (a livelier but still controlled rebound, rather
+      // than the previous ~0.23 ratio, which was underdamped enough to
+      // oscillate/bounce on its own after every compression).
+      dampingRelaxation: 6.5,
+      dampingCompression: 11,
       restLength: 0.42,
       maxTravel: 0.28,
       maxForce: 100000,
