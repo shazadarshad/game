@@ -13,37 +13,59 @@ export const CONFIG = Object.freeze({
     fov: 62,
     // Cap devicePixelRatio so high-DPI displays do not tank the frame rate.
     pixelRatioCap: 2,
-    clearColor: 0x93c7ff,
-    fogColor: 0xaad2ff,
+    clearColor: 0xd9803f,
+    fogColor: 0xe6935a,
     fogNear: 120,
     fogFar: 620,
     // Tone-mapping exposure for the ACESFilmic curve applied in the renderer.
-    toneMappingExposure: 1.05,
+    toneMappingExposure: 1.15,
+    // Postprocessing (EffectComposer + UnrealBloomPass + OutputPass), loaded
+    // from the same three/addons/ CDN prefix already used elsewhere. Disable
+    // to fall back to a direct renderer.render() call (e.g. for low-end GPUs).
+    postprocessing: Object.freeze({
+      enabled: true,
+      bloomStrength: 0.55,
+      bloomRadius: 0.45,
+      bloomThreshold: 0.82,
+    }),
   }),
 
   environment: Object.freeze({
     // Procedural gradient sky (generated on a canvas, no network asset).
-    // Colours blend top -> horizon down the dome.
-    skyTopColor: 0x2a63b8,
-    skyHorizonColor: 0xbfe0ff,
+    // Colours blend top -> horizon down the dome. Warm sunset palette.
+    skyTopColor: 0x2b3f77,
+    skyHorizonColor: 0xff9d5c,
     // Radius of the sky dome sphere (metres). Sits well outside the far plane
     // of the fog so the gradient reads as a distant sky.
     skyRadius: 900,
-    // Directional "sun" light.
-    sunColor: 0xfff2d8,
-    sunIntensity: 2.0,
-    sunPosition: Object.freeze({ x: 120, y: 200, z: 90 }),
+    // Low-angle warm "sun" light for a dramatic sunset look, with soft edged
+    // shadows from the framed shadow camera below.
+    sunColor: 0xffb066,
+    sunIntensity: 2.4,
+    sunPosition: Object.freeze({ x: 220, y: 70, z: -40 }),
     // Shadow camera orthographic half-size framed around the whole track.
     shadowCameraSize: 200,
     shadowMapSize: 2048,
     shadowBias: -0.0004,
-    // Hemisphere fill so shadowed faces are lit by sky/ground bounce.
-    skyFillColor: 0xbfd8ff,
-    groundFillColor: 0x3a4a2f,
-    hemisphereIntensity: 0.7,
+    // Hemisphere fill so shadowed faces are lit by sky/ground bounce. Warm
+    // sky tint above, cool-ish ground bounce below for contrast.
+    skyFillColor: 0xff9d6a,
+    groundFillColor: 0x2c2a3a,
+    hemisphereIntensity: 0.55,
     // A low ambient floor so nothing is pure black.
-    ambientColor: 0x404858,
-    ambientIntensity: 0.35,
+    ambientColor: 0x3a3450,
+    ambientIntensity: 0.3,
+    // Cool rim/fill light opposite the sun, so shadowed faces are not flatly
+    // dark (cheap approximation of bounce light without extra shadow maps).
+    rimColor: 0x6a86ff,
+    rimIntensity: 0.5,
+    rimPosition: Object.freeze({ x: -160, y: 90, z: 140 }),
+    // Reflection environment map (generated procedurally via three/addons'
+    // RoomEnvironment + PMREMGenerator, no HDRI download) applied to
+    // scene.environment so metallic/glossy surfaces (car body, glass) pick up
+    // soft reflections.
+    envMapEnabled: true,
+    envMapIntensity: 0.9,
   }),
 
   camera: Object.freeze({
@@ -59,6 +81,16 @@ export const CONFIG = Object.freeze({
     // Extra pull-back as speed rises, for a sense of velocity.
     speedZoom: 0.0025,
     maxSpeedZoom: 4.5,
+    // Screen-shake on hard collisions: a short decaying positional jolt applied
+    // on top of the smoothed chase-cam position. impulse -> initial magnitude
+    // (metres), decay -> how fast it settles (per second, exponential).
+    shakeDecay: 9,
+    // Impulse (m/s change) below this is ignored so gentle wall taps do not
+    // shake the camera.
+    shakeMinImpulse: 3,
+    // Impulse mapped to full-strength shake for the max magnitude below.
+    shakeMaxImpulse: 16,
+    shakeMaxMagnitude: 0.35,
   }),
 
   physics: Object.freeze({
@@ -131,6 +163,104 @@ export const CONFIG = Object.freeze({
   world: Object.freeze({
     groundSize: 2000,
     groundColor: 0x3a4a2f,
+  }),
+
+  scenery: Object.freeze({
+    // Roadside decoration (trees + grandstands), placed procedurally along the
+    // offset centerline. Purely visual: no physics bodies, so collision
+    // geometry (barriers) is unaffected. Placement keeps a minimum clearance
+    // from the barrier line so nothing pokes through the track edge.
+    enabled: true,
+    // Lateral clearance (metres) beyond the barrier before scenery may sit.
+    clearance: 4,
+    tree: Object.freeze({
+      // Roughly every N metres of centerline a tree cluster is attempted on
+      // each side, skipping a side at random for a less uniform tree line.
+      spacing: 14,
+      // Extra random lateral jitter (metres) added beyond the base offset.
+      jitter: 6,
+      minOffset: 3,
+      maxOffset: 22,
+      minHeight: 4,
+      maxHeight: 7.5,
+      minRadius: 1.1,
+      maxRadius: 1.9,
+      trunkColor: 0x5b3a29,
+      canopyColors: Object.freeze([0x2f6b34, 0x35803b, 0x27592c]),
+    }),
+    grandstand: Object.freeze({
+      // Number of grandstand blocks placed at evenly spaced intervals along
+      // the loop (on alternating sides) for a "race day" backdrop.
+      count: 5,
+      offset: 16,
+      width: 22,
+      depth: 6,
+      height: 8,
+      frameColor: 0x545a66,
+      seatColors: Object.freeze([0x3b6ea5, 0xd2482a, 0xe0b23a, 0x3f9457]),
+    }),
+  }),
+
+  fx: Object.freeze({
+    // Speed-line (radial streak) postprocessing-free overlay: implemented as a
+    // full-screen DOM/canvas vignette whose opacity ramps with speed, cheap
+    // enough to run without a dedicated composer pass.
+    speedLines: Object.freeze({
+      enabled: true,
+      // Speed (km/h) at which lines start to appear / reach full strength.
+      startKmh: 90,
+      maxKmh: 220,
+      maxOpacity: 0.55,
+    }),
+    // Wall-collision sparks: a short-lived burst of small bright particles
+    // spawned at the impact point. Pooled the same way skid marks are.
+    sparks: Object.freeze({
+      enabled: true,
+      pool: 120,
+      particlesPerHit: 14,
+      lifetime: 0.5,
+      speed: 6,
+      // Impact speed (m/s change) below which no sparks are spawned.
+      minImpactSpeed: 2.5,
+      color: 0xffcf7a,
+    }),
+    // Dust puffs kicked up off-road / on hard acceleration, reusing the same
+    // pooled-sprite approach as the existing tire-smoke puff.
+    dust: Object.freeze({
+      enabled: true,
+      color: 0xcabf9a,
+    }),
+  }),
+
+  hud: Object.freeze({
+    // Dial-style speedometer geometry (SVG-driven, DOM based). Angles are in
+    // degrees, measured clockwise from straight up (12 o'clock = 0).
+    speedoMaxKmh: 240,
+    speedoStartAngle: -130,
+    speedoEndAngle: 130,
+    // Redline zone (fraction of speedoMaxKmh) rendered in a warning colour.
+    redlineFraction: 0.82,
+  }),
+
+  audio: Object.freeze({
+    enabled: true,
+    masterVolume: 0.55,
+    engine: Object.freeze({
+      // Base oscillator frequency (Hz) at idle (speed 0) and the additional
+      // frequency added per km/h, giving a simple RPM-ish pitch curve.
+      idleHz: 55,
+      hzPerKmh: 2.6,
+      maxHz: 260,
+      // Throttle blends in a brighter overtone for a "under load" feel.
+      volumeIdle: 0.05,
+      volumeMax: 0.32,
+    }),
+    tireScreech: Object.freeze({
+      volumeMax: 0.28,
+      // How quickly screech volume eases toward its target (per second).
+      attackRate: 10,
+      releaseRate: 6,
+    }),
   }),
 
   race: Object.freeze({
