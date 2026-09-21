@@ -54,6 +54,13 @@ export function buildEnvironment(scene, fog, renderer) {
   cam.bottom = -size;
   cam.updateProjectionMatrix();
   sun.shadow.bias = env.shadowBias;
+  // Slope-scaled bias: fixes shadow acne on angled/curved surfaces (tree
+  // canopies, car body) far more reliably than a flat depth bias alone,
+  // which is what was causing the roadside scenery's shadows to flicker as
+  // the camera moved (see CONFIG.environment.shadowNormalBias).
+  if (env.shadowNormalBias !== undefined) {
+    sun.shadow.normalBias = env.shadowNormalBias;
+  }
   // Aim the sun at the middle of the track so the framed shadow box is centred.
   sun.target.position.set(60, 0, 60);
   scene.add(sun);
