@@ -176,11 +176,23 @@ export class Vehicle {
   }
 
   /**
-   * Steering angle applied to the front wheels.
+   * Steering angle applied to the front wheels. Positive = steer right,
+   * negative = steer left (matches Car's input.steer convention, where
+   * input.steer = right - left).
+   *
+   * cannon-es's RaycastVehicle resolves a wheel's actual turning direction
+   * from `fwd x up = right` using each wheel's configured axleLocal/
+   * indexRightAxis, then rotates the wheel's forward direction by the raw
+   * steering value about the up axis. With this project's axleLocal =
+   * (-1, 0, 0) (see _addWheels), that resolves to POSITIVE steering turning
+   * the wheels LEFT, i.e. the opposite of the angle sign this class's public
+   * API promises. Negate here, at the cannon-es boundary, so callers
+   * (Car.update) can keep treating a positive angle as "steer right" without
+   * needing to know about cannon-es's internal axle convention.
    * @param {number} angle radians
    */
   setSteer(angle) {
-    for (const i of FRONT_WHEELS) this.vehicle.setSteeringValue(angle, i);
+    for (const i of FRONT_WHEELS) this.vehicle.setSteeringValue(-angle, i);
   }
 
   /**
