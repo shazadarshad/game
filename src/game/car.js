@@ -15,6 +15,7 @@ import { CONFIG } from "../config.js";
 import { Vehicle } from "../physics/vehicle.js";
 import { steerTowards, kmhFromMs } from "./logic/handling.js";
 import { lateralSlip, isDrifting, driftIntensity } from "./logic/drift.js";
+import { wheelspinIntensity } from "./logic/dust.js";
 import { SkidMarks } from "./skidmarks.js";
 import { Sparks } from "./sparks.js";
 
@@ -352,6 +353,14 @@ export class Car {
     this.puff = this._buildPuff();
     if (this.puff) this.bodyGroup.add(this.puff);
 
+    // A dustier, warmer-tinted puff shown near BOTH rear wheels on a hard
+    // launch/wheelspin (see CONFIG.fx.dust / logic/dust.js#wheelspinIntensity).
+    // Reuses the same canvas-sprite approach as the drift puff, just tinted
+    // and positioned lower/wider to read as ground dust rather than smoke.
+    this.dustCfg = CONFIG.fx?.dust;
+    this.dustPuff = this.dustCfg?.enabled ? this._buildDustPuff() : null;
+    if (this.dustPuff) this.bodyGroup.add(this.dustPuff);
+
     // Wheels live in their own group because the raycast vehicle reports each
     // wheel's world transform independently of the chassis. Each wheel is now
     // a small assembly: a dark tire, a lighter metal rim disc, thin spokes and
@@ -407,6 +416,43 @@ export class Car {
   }
 
   /**
+   * Build a soft additive sprite used as the launch/wheelspin dust puff,
+   * tinted from CONFIG.fx.dust.color and sat low/wide behind the rear axle so
+   * it reads as ground dust rather than the tighter drift-smoke puff. Returns
+   * null in non-browser contexts (no 2D canvas) or if dust is disabled.
+   * @returns {THREE.Sprite|null}
+   */
+  _buildDustPuff() {
+    if (typeof document === "undefined" || !document.createElement) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext && canvas.getContext("2d");
+    if (!ctx) return null;
+    const grad = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+    grad.addColorStop(0, "rgba(255,255,255,0.85)");
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 64, 64);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    const mat = new THREE.SpriteMaterial({
+      map: texture,
+      color: this.dustCfg?.color ?? 0xcabf9a,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(2.4, 1.1, 2.4);
+    // Low and just behind the rear axle, near the ground.
+    sprite.position.set(0, 0.05, -this.cfg.chassisHalfExtents.z - 0.3);
+    sprite.visible = false;
+    return sprite;
+  }
+
+  /**
    * Advance the car for one fixed step. This only sets the vehicle controls
    * (steering, throttle/brake, drift grip) and updates the drift feedback; it
    * does NOT step the physics world and does NOT copy transforms to the
@@ -424,6 +470,17 @@ export class Car {
     this._throttle = Number.isFinite(input.throttle)
       ? Math.min(1, Math.max(0, input.throttle))
       : 0;
+    // Engine "load" for audio purposes: forward throttle counts, and so does
+    // brake-held-at-standstill reverse (see the engineForce branch below) so
+    // accelerating backward sounds "under load" instead of idling while the
+    // pitch (driven by unsigned speed) ramps up. Braking while already moving
+    // forward is not under load (it is slowing down), so it is excluded.
+    const forwardSpeedForLoad = this.vehicle.speed;
+    const reverseLoad =
+      input.brake > 0 && forwardSpeedForLoad <= 0.5
+        ? Math.min(1, Math.max(0, input.brake))
+        : 0;
+    this._engineLoad = Math.max(this._throttle, reverseLoad);
 
     // Poll the physics vehicle for the strongest collision impact recorded
     // since the last step. A hard enough hit spawns a spark burst at the
@@ -527,6 +584,20 @@ export class Car {
       this.puff.visible = this.puff.material.opacity > 0.01;
     }
 
+    // Dust puff: fade in on a hard launch/wheelspin (high throttle from near
+    // standstill), independent of the drift/slip trigger above. See
+    // logic/dust.js#wheelspinIntensity.
+    if (this.dustPuff) {
+      const spinIntensity = wheelspinIntensity(
+        { speedKmh, throttle: this._throttle ?? 0 },
+        this.dustCfg,
+      );
+      const target = 0.5 * spinIntensity;
+      const cur = this.dustPuff.material.opacity;
+      this.dustPuff.material.opacity = cur + (target - cur) * Math.min(1, 6 * dt);
+      this.dustPuff.visible = this.dustPuff.material.opacity > 0.01;
+    }
+
     // Skid marks: drop a pair of quads under the rear wheels once the car has
     // travelled far enough since the last drop, so the pool lasts through a
     // whole corner instead of being spent in a few frames.
@@ -549,6 +620,27 @@ export class Car {
     this.skidMarks.update(dt);
   }
 
+  /**
+   * Recolor the car body paint at runtime (a livery swap). No-op if the body
+   * material has not been built yet. Kept minimal on purpose: this is the
+   * one hook a future "multiple cars" or "upgrades" phase (see the README
+   * roadmap) would need to give each car a distinct color without rebuilding
+   * its geometry.
+   * @param {number|string} color any THREE.Color-accepted value
+   */
+  setBodyColor(color) {
+    if (this._bodyMat) this._bodyMat.color.set(color);
+  }
+
+  /**
+   * Tint the car's glass panes at runtime, paired with setBodyColor() for a
+   * full livery swap.
+   * @param {number|string} color any THREE.Color-accepted value
+   */
+  setGlassColor(color) {
+    if (this._glassMat) this._glassMat.color.set(color);
+  }
+
   /** @returns {boolean} whether the car is currently drifting/sliding. */
   get drifting() {
     return this._drifting;
@@ -559,9 +651,20 @@ export class Car {
     return this._driftIntensity ?? 0;
   }
 
-  /** @returns {number} last throttle input (0..1), for the audio system's engine-volume mapping */
+  /** @returns {number} last throttle input (0..1); forward accelerator only */
   get throttle() {
     return this._throttle ?? 0;
+  }
+
+  /**
+   * @returns {number} 0..1 "under load" signal for the audio system's
+   *   engine-volume mapping: forward throttle, OR brake-held-at-standstill
+   *   reverse throttle, whichever is active. Kept distinct from `throttle`
+   *   (which stays forward-only for any other consumer) so reversing at
+   *   speed sounds like it is under load rather than idling.
+   */
+  get engineLoad() {
+    return this._engineLoad ?? 0;
   }
 
   /**
@@ -623,6 +726,10 @@ export class Car {
     if (this.puff) {
       this.puff.material.opacity = 0;
       this.puff.visible = false;
+    }
+    if (this.dustPuff) {
+      this.dustPuff.material.opacity = 0;
+      this.dustPuff.visible = false;
     }
     if (this.skidMarks) this.skidMarks.clear();
     if (this.sparks) this.sparks.clear();

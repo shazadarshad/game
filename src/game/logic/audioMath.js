@@ -26,18 +26,45 @@ export function engineFrequency(speedKmh, cfg) {
 }
 
 /**
- * Map throttle input (0..1) to an engine gain/volume level, blending between
- * an idle volume and a max volume under load.
+ * Map "under load" input (0..1) to an engine gain/volume level, blending
+ * between an idle volume and a max volume under load. The caller passes
+ * whichever input is currently driving the car forward or backward: forward
+ * throttle, or brake-held-at-standstill reverse throttle (see Car.throttle),
+ * so accelerating in reverse sounds "under load" the same way accelerating
+ * forward does, instead of sitting at idle volume.
  *
- * @param {number} throttle 0..1 (values outside are clamped)
+ * @param {number} load 0..1 (values outside are clamped)
  * @param {object} cfg CONFIG.audio.engine (volumeIdle, volumeMax)
  * @returns {number} gain in [volumeIdle, volumeMax]
  */
-export function engineVolume(throttle, cfg) {
+export function engineVolume(load, cfg) {
   const idle = cfg.volumeIdle ?? 0.05;
   const max = cfg.volumeMax ?? 0.32;
-  const t = Number.isFinite(throttle) ? Math.min(1, Math.max(0, throttle)) : 0;
+  const t = Number.isFinite(load) ? Math.min(1, Math.max(0, load)) : 0;
   return idle + (max - idle) * t;
+}
+
+/**
+ * Map engine RPM proxy (unsigned speed, km/h) to a low-pass filter cutoff
+ * (Hz), so the engine tone brightens/opens up a little as it "revs" instead
+ * of staying muffled at all speeds. Reuses `engineFrequency`'s own idle/max
+ * range so brightness stays proportional to pitch if `idleHz`/`maxHz` are
+ * ever retuned in config, instead of hard-coding an unrelated denominator.
+ *
+ * @param {number} speedKmh unsigned speed in km/h
+ * @param {object} cfg CONFIG.audio.engine (idleHz, hzPerKmh, maxHz)
+ * @param {{base?: number, range?: number}} [opts] cutoff base/range in Hz
+ * @returns {number} filter cutoff frequency in Hz
+ */
+export function engineBrightness(speedKmh, cfg, opts = {}) {
+  const base = opts.base ?? 700;
+  const range = opts.range ?? 2200;
+  const idle = cfg.idleHz ?? 55;
+  const max = cfg.maxHz ?? 260;
+  const freq = engineFrequency(speedKmh, cfg);
+  const span = max - idle;
+  const t = span > 0 ? Math.min(1, Math.max(0, (freq - idle) / span)) : 0;
+  return base + range * t;
 }
 
 /**
@@ -73,4 +100,10 @@ export function screechTargetVolume(intensity, cfg) {
   return max * i;
 }
 
-export default { engineFrequency, engineVolume, easeVolume, screechTargetVolume };
+export default {
+  engineFrequency,
+  engineVolume,
+  engineBrightness,
+  easeVolume,
+  screechTargetVolume,
+};

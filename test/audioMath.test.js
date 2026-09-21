@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import {
   engineFrequency,
   engineVolume,
+  engineBrightness,
   easeVolume,
   screechTargetVolume,
 } from "../src/game/logic/audioMath.js";
@@ -74,4 +75,35 @@ test("screechTargetVolume scales linearly with intensity", () => {
 test("screechTargetVolume clamps intensity outside [0,1]", () => {
   assert.equal(screechTargetVolume(-1, SCREECH), 0);
   assert.equal(screechTargetVolume(5, SCREECH), 0.28);
+});
+
+test("engineBrightness is at its base at speed 0", () => {
+  assert.equal(engineBrightness(0, ENGINE), 700);
+});
+
+test("engineBrightness reaches base+range once frequency hits maxHz", () => {
+  assert.equal(engineBrightness(1000, ENGINE), 700 + 2200);
+});
+
+test("engineBrightness increases monotonically with speed", () => {
+  const low = engineBrightness(10, ENGINE);
+  const high = engineBrightness(100, ENGINE);
+  assert.ok(high > low, `expected ${high} > ${low}`);
+});
+
+test("engineBrightness scales proportionally with a retuned maxHz", () => {
+  // Halving maxHz (holding idleHz fixed) should make a mid-speed value reach
+  // a proportionally higher point in the base/range span, confirming
+  // brightness is derived from the same idle/max span as pitch rather than a
+  // hard-coded, unrelated denominator.
+  const narrow = { ...ENGINE, maxHz: 130 };
+  const wide = { ...ENGINE, maxHz: 260 };
+  const atSameSpeed = engineBrightness(50, narrow);
+  const atSameSpeedWide = engineBrightness(50, wide);
+  assert.ok(atSameSpeed > atSameSpeedWide, `${atSameSpeed} should exceed ${atSameSpeedWide}`);
+});
+
+test("engineBrightness respects custom base/range options", () => {
+  assert.equal(engineBrightness(0, ENGINE, { base: 400, range: 1000 }), 400);
+  assert.equal(engineBrightness(1000, ENGINE, { base: 400, range: 1000 }), 400 + 1000);
 });

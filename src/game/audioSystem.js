@@ -25,6 +25,7 @@ import { CONFIG } from "../config.js";
 import {
   engineFrequency,
   engineVolume,
+  engineBrightness,
   easeVolume,
   screechTargetVolume,
 } from "./logic/audioMath.js";
@@ -148,12 +149,16 @@ export class AudioSystem {
     const screechCfg = this.cfg.tireScreech;
 
     const freq = engineFrequency(car.speedKmh, engineCfg);
-    const vol = engineVolume(car.throttle ?? 0, engineCfg);
+    // engineLoad covers forward throttle AND brake-held-at-standstill reverse
+    // (see Car.engineLoad) so reversing under load doesn't sound like idling
+    // while the pitch, driven by unsigned speed, ramps up.
+    const vol = engineVolume(car.engineLoad ?? car.throttle ?? 0, engineCfg);
     this._setParam(this._engineOsc.frequency, freq);
     this._setParam(this._engineGain.gain, vol);
     // Brighten the filter a little with speed so higher revs sound less
-    // muffled, purely a cosmetic touch (not unit-tested; simple linear map).
-    const brightness = 700 + Math.min(1, car.speedKmh / (engineCfg.maxHz ? 200 : 200)) * 2200;
+    // muffled, purely a cosmetic touch driven by the same idle/max range as
+    // pitch (see logic/audioMath.js#engineBrightness).
+    const brightness = engineBrightness(car.speedKmh, engineCfg);
     this._setParam(this._engineFilter.frequency, brightness);
 
     const target = screechTargetVolume(car.driftIntensity ?? 0, screechCfg);
