@@ -1,9 +1,11 @@
 # Systems (extension seam)
 
-This folder is the home for pluggable game systems. It is intentionally empty
-of implementations right now: the point is the CONTRACT below, which lets later
-phases (opponent AI, audio, minimap, additional cars, upgrades) layer onto the
-running game without editing the core bootstrap in `src/main.js`.
+This folder documents the pluggable-system CONTRACT that lets phases beyond
+the core bootstrap (opponent AI, audio, minimap, additional cars, upgrades)
+layer onto the running game without editing `src/main.js`. The first real
+system, `AudioSystem` (synthesized engine/tire-screech sound), now lives in
+`src/game/audioSystem.js` and is registered exactly the way this contract
+describes; the rest (opponent AI, minimap, multiple cars) remain planned.
 
 ## The contract
 
@@ -45,18 +47,25 @@ Systems read what they need from `ctx` rather than capturing globals, so the
 wiring stays declarative and testable. Adding a field (for example a `cars`
 array once there is more than one car) is a one-line change in `main.js`.
 
-## How the planned Phase 2+ systems slot in
+## How systems slot in
 
-- OpponentAI: an `update(dt, ctx)` system that steers AI-controlled cars around
-  `ctx.track.centerline` and writes their inputs to their vehicles. It needs a
-  `ctx.cars` list; the single player `ctx.car` already models the interface.
-- AudioSystem: an `update(dt, ctx)` system that maps `ctx.car.speedKmh` to
-  engine pitch and `ctx.car.drifting` to a tire-screech loop. Purely reactive,
-  no core changes.
-- Minimap: a `render(alpha, ctx)` system that draws the resampled centerline and
-  every car's ground position to a 2D canvas overlay.
-- Multiple cars / upgrades: extend `ctx` with a `cars` array and per-car tuning
-  read from `CONFIG`; the loop already fans out to every system each step.
+- **AudioSystem (implemented)**: an `update(dt, ctx)` system
+  (`src/game/audioSystem.js`) that maps `ctx.car.speedKmh`/`ctx.car.throttle`
+  to a synthesized engine tone (Web Audio oscillator + filter) and
+  `ctx.car.driftIntensity` to a tire-screech noise loop's gain. Purely
+  reactive, no core changes; registered in `main.js` via
+  `loop.addSystem(new AudioSystem())`. Its `start()` method must be called
+  from a user-gesture handler (browser autoplay policy); `main.js` does this
+  on the first click/keypress/touch.
+- OpponentAI (planned): an `update(dt, ctx)` system that steers AI-controlled
+  cars around `ctx.track.centerline` and writes their inputs to their
+  vehicles. It needs a `ctx.cars` list; the single player `ctx.car` already
+  models the interface.
+- Minimap (planned): a `render(alpha, ctx)` system that draws the resampled
+  centerline and every car's ground position to a 2D canvas overlay.
+- Multiple cars / upgrades (planned): extend `ctx` with a `cars` array and
+  per-car tuning read from `CONFIG`; the loop already fans out to every
+  system each step.
 
 Keeping the loop's fan-out deterministic and ordered (no priorities, no
 dependency graph) means these systems compose predictably. See the header
