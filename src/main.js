@@ -46,9 +46,15 @@ function boot() {
   const input = new InputManager(window);
   input.attach();
 
-  // Lit outdoor environment: procedural gradient sky, framed-shadow sun,
-  // hemisphere + ambient fill, fog matched to the sky horizon.
-  buildEnvironment(engine.scene, engine.scene.fog);
+  // Lit outdoor environment: procedural gradient sky, framed-shadow sun, a
+  // cool rim light, hemisphere + ambient fill, fog matched to the sky
+  // horizon, and (if enabled) a procedural PMREM reflection environment map
+  // for glossy surfaces like the car body/glass.
+  buildEnvironment(engine.scene, engine.scene.fog, engine.renderer);
+
+  // Best-effort bloom postprocessing chain; falls back to a direct render
+  // call if the addon CDN import fails, so boot never blocks on it.
+  engine.initPostprocessing();
 
   // Physics world + designed track (road, barriers, checkpoints) + player car.
   const physics = new PhysicsWorld();
@@ -102,6 +108,10 @@ function boot() {
       car.update(dt, controls);
       physics.step(dt);
       car.sync();
+
+      // A hard enough wall hit feeds the chase camera's screen-shake.
+      const impact = car.lastImpact;
+      if (impact && impact.speed > 0) chaseCamera.addImpact(impact.speed);
 
       // Advance the race clock + ordered checkpoint detection.
       race.update(dt, car.position);

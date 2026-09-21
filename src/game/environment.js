@@ -25,7 +25,7 @@ import { CONFIG } from "../config.js";
  * @param {THREE.Fog} [fog] optional existing fog to recolour to the sky horizon
  * @returns {{sun:THREE.DirectionalLight, hemisphere:THREE.HemisphereLight, ambient:THREE.AmbientLight, sky:THREE.Mesh}}
  */
-export function buildEnvironment(scene, fog) {
+export function buildEnvironment(scene, fog, renderer) {
   const env = CONFIG.environment;
 
   // ---- Procedural gradient sky dome ----------------------------------------
@@ -38,6 +38,8 @@ export function buildEnvironment(scene, fog) {
   if (fog) fog.color.copy(horizon);
 
   // ---- Sun (key directional light with framed shadow camera) ---------------
+  // Positioned low (see CONFIG.environment.sunPosition) for a dramatic sunset
+  // rake, warm-tinted, with a cool rim light opposite it below for contrast.
   const sun = new THREE.DirectionalLight(env.sunColor, env.sunIntensity);
   sun.position.set(env.sunPosition.x, env.sunPosition.y, env.sunPosition.z);
   sun.castShadow = CONFIG.render.shadows;
@@ -57,6 +59,19 @@ export function buildEnvironment(scene, fog) {
   scene.add(sun);
   scene.add(sun.target);
 
+  // ---- Cool rim/fill light opposite the sun --------------------------------
+  // A cheap stand-in for sky bounce light on the sun's shadow side, so
+  // shadowed faces of the car/barriers are not flatly dark under the low
+  // sunset key light. No shadow map of its own (fill-only).
+  let rim = null;
+  if (env.rimColor !== undefined) {
+    rim = new THREE.DirectionalLight(env.rimColor, env.rimIntensity ?? 0.5);
+    const rp = env.rimPosition ?? { x: -160, y: 90, z: 140 };
+    rim.position.set(rp.x, rp.y, rp.z);
+    rim.castShadow = false;
+    scene.add(rim);
+  }
+
   // ---- Hemisphere fill + ambient floor -------------------------------------
   const hemisphere = new THREE.HemisphereLight(
     env.skyFillColor,
@@ -69,7 +84,78 @@ export function buildEnvironment(scene, fog) {
   const ambient = new THREE.AmbientLight(env.ambientColor, env.ambientIntensity);
   scene.add(ambient);
 
-  return { sun, hemisphere, ambient, sky };
+  // ---- Procedural reflection environment map -------------------------------
+  // Generates a soft, generic room-like lighting environment at runtime (no
+  // HDRI download) and assigns it to scene.environment so glossy/metallic
+  // materials (the car body, glass) pick up believable reflections. Requires
+  // a renderer (skipped gracefully if not provided, e.g. in non-browser
+  // syntax-check contexts).
+  let envMap = null;
+  if (env.envMapEnabled && renderer) {
+    envMap = buildReflectionEnvMap(renderer);
+    if (envMap) scene.environment = envMap;
+  }
+
+  return { sun, rim, hemisphere, ambient, sky, envMap };
+}
+
+/**
+ * Build a procedural PMREM environment map using three/addons'
+ * RoomEnvironment (a simple generic interior of coloured panels) so glossy
+ * surfaces get soft, plausible reflections without downloading an HDRI. Any
+ * import/runtime failure degrades gracefully to null (caller just skips
+ * scene.environment, leaving materials lit by the direct lights only).
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @returns {THREE.Texture|null}
+ */
+export function buildReflectionEnvMap(renderer) {
+  try {
+    // Imported lazily/synchronously here (top-level static import would make
+    // this addon mandatory even when envMapEnabled is false); dynamic import
+    // still resolves through the same importmap entry as "three/addons/".
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    pmrem.compileCubemapShader();
+    const room = buildProceduralRoomScene();
+    const target = pmrem.fromScene(room, 0.04);
+    pmrem.dispose();
+    return target.texture;
+  } catch (err) {
+    // No network / addon unavailable / non-browser context: fall back to
+    // direct lighting only. Logged for visibility but never thrown.
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn("Reflection environment map unavailable, continuing without it:", err);
+    }
+    return null;
+  }
+}
+
+/**
+ * A tiny generic "room" scene used only to seed the PMREM environment map: a
+ * few large coloured planes around a point, similar in spirit to three's
+ * RoomEnvironment addon but built inline from primitives so no extra addon
+ * import/network path is required.
+ * @returns {THREE.Scene}
+ */
+function buildProceduralRoomScene() {
+  const scene = new THREE.Scene();
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  const panels = [
+    { color: 0xfff2df, pos: [0, 4, 0], scale: [10, 0.1, 10] }, // ceiling, warm
+    { color: 0x333846, pos: [0, -4, 0], scale: [10, 0.1, 10] }, // floor, cool dark
+    { color: 0xffb066, pos: [5, 0, 0], scale: [0.1, 8, 10] }, // warm wall (sun side)
+    { color: 0x6a86ff, pos: [-5, 0, 0], scale: [0.1, 8, 10] }, // cool wall (rim side)
+    { color: 0xf4f4f4, pos: [0, 0, 5], scale: [10, 8, 0.1] },
+    { color: 0xf4f4f4, pos: [0, 0, -5], scale: [10, 8, 0.1] },
+  ];
+  for (const p of panels) {
+    const mat = new THREE.MeshBasicMaterial({ color: p.color });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(...p.pos);
+    mesh.scale.set(...p.scale);
+    scene.add(mesh);
+  }
+  return scene;
 }
 
 /**

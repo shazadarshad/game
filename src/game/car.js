@@ -16,6 +16,7 @@ import { Vehicle } from "../physics/vehicle.js";
 import { steerTowards, kmhFromMs } from "./logic/handling.js";
 import { lateralSlip, isDrifting, driftIntensity } from "./logic/drift.js";
 import { SkidMarks } from "./skidmarks.js";
+import { Sparks } from "./sparks.js";
 
 // ---- Procedural car model builders (module-local) --------------------------
 //
@@ -211,6 +212,11 @@ export class Car {
 
     // Pooled skid decals dropped under the rear wheels while sliding.
     this.skidMarks = new SkidMarks(scene);
+    // Pooled spark burst spawned on hard wall collisions.
+    this.sparks = new Sparks(scene);
+    // Impact recorded this step (consumed by main.js to drive camera shake),
+    // cleared at the start of each update().
+    this._lastImpact = { speed: 0, position: null };
   }
 
   _buildModel() {
@@ -413,6 +419,22 @@ export class Car {
    * @param {{throttle:number, brake:number, steer:number, handbrake:boolean}} input
    */
   update(dt, input) {
+    // Poll the physics vehicle for the strongest collision impact recorded
+    // since the last step. A hard enough hit spawns a spark burst at the
+    // impact point and is exposed via `lastImpact` for main.js to forward to
+    // the chase camera's screen-shake.
+    const impact = this.vehicle.consumeImpact();
+    this._lastImpact = impact;
+    const fxCfg = CONFIG.fx?.sparks;
+    if (
+      fxCfg?.enabled &&
+      impact.speed >= (fxCfg.minImpactSpeed ?? 2.5) &&
+      impact.position
+    ) {
+      this.sparks.burst(impact.position, fxCfg.particlesPerHit);
+    }
+    this.sparks.update(dt);
+
     const speedKmh = Math.abs(this.vehicle.speedKmh);
 
     // Smooth the steering angle toward the requested direction so quick taps
@@ -526,6 +548,15 @@ export class Car {
   }
 
   /**
+   * @returns {{speed:number, position:{x:number,y:number,z:number}|null}}
+   *   the strongest collision impact recorded during the most recent
+   *   update() call (speed 0/position null if none).
+   */
+  get lastImpact() {
+    return this._lastImpact;
+  }
+
+  /**
    * Copy the solved physics transforms onto the visual group and wheels.
    * Safe to call any time after a physics step.
    */
@@ -577,6 +608,8 @@ export class Car {
       this.puff.visible = false;
     }
     if (this.skidMarks) this.skidMarks.clear();
+    if (this.sparks) this.sparks.clear();
+    this._lastImpact = { speed: 0, position: null };
   }
 
   /** @returns {number} unsigned speed in km/h for the HUD */

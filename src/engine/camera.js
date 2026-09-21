@@ -9,6 +9,7 @@
 import * as THREE from "three";
 import { CONFIG } from "../config.js";
 import { expDamp, dampAngle } from "../game/logic/cameraMath.js";
+import { traumaFromImpact, decayTrauma, shakeOffset } from "../game/logic/shake.js";
 
 export class ChaseCamera {
   /**
@@ -25,9 +26,27 @@ export class ChaseCamera {
     this._zoom = 0;
     this._initialised = false;
 
+    // Screen-shake state: a decaying "trauma" value in [0, 1] driven by
+    // addImpact(), consumed each frame by the pure shake helpers to produce a
+    // small jittered offset added on top of the smoothed chase position.
+    this._trauma = 0;
+    this._elapsed = 0;
+
     // Scratch vectors reused each frame to avoid allocation.
     this._desiredPos = new THREE.Vector3();
     this._desiredLook = new THREE.Vector3();
+    this._shakeVec = new THREE.Vector3();
+  }
+
+  /**
+   * Register a collision impact so the next few frames of update() apply a
+   * decaying screen-shake offset. Impacts below CONFIG.camera.shakeMinImpulse
+   * are ignored (gentle wall taps should not shake the camera).
+   * @param {number} impactSpeed magnitude of the sudden velocity change (m/s)
+   */
+  addImpact(impactSpeed) {
+    const added = traumaFromImpact(impactSpeed, this.cfg);
+    if (added > 0) this._trauma = Math.min(1, Math.max(this._trauma, added));
   }
 
   /**
@@ -38,6 +57,7 @@ export class ChaseCamera {
   snap(position, heading) {
     this._heading = heading;
     this._zoom = 0;
+    this._trauma = 0;
     this._computeDesired(position, heading, 0);
     this._pos.copy(this._desiredPos);
     this._look.copy(this._desiredLook);
@@ -102,11 +122,20 @@ export class ChaseCamera {
     this._look.y = expDamp(this._look.y, this._desiredLook.y, this.cfg.positionStiffness, dt);
     this._look.z = expDamp(this._look.z, this._desiredLook.z, this.cfg.positionStiffness, dt);
 
+    this._elapsed += dt;
+    this._trauma = decayTrauma(this._trauma, this.cfg.shakeDecay ?? 9, dt);
+
     this._apply();
   }
 
   _apply() {
-    this.camera.position.copy(this._pos);
+    if (this._trauma > 0) {
+      const off = shakeOffset(this._trauma, this._elapsed, this.cfg);
+      this._shakeVec.set(off.x, off.y, off.z);
+      this.camera.position.copy(this._pos).add(this._shakeVec);
+    } else {
+      this.camera.position.copy(this._pos);
+    }
     this.camera.lookAt(this._look);
   }
 }

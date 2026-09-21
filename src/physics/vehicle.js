@@ -56,6 +56,49 @@ export class Vehicle {
     body.position.copy(this._spawn);
     body.angularDamping = 0.4;
     this.chassisBody = body;
+
+    // Track the strongest collision impact (m/s along the contact normal) and
+    // its world position for one fixed step, so Car can forward it to the
+    // chase camera's screen-shake and spawn a spark burst at the impact
+    // point. Cleared by consumeImpact(); a body can fire multiple "collide"
+    // events in one step (e.g. clipping a wall corner), so keep the
+    // strongest.
+    this._lastImpact = 0;
+    this._lastImpactPos = null;
+    body.addEventListener("collide", (event) => {
+      const contact = event.contact;
+      if (!contact || typeof contact.getImpactVelocityAlongNormal !== "function") {
+        return;
+      }
+      const impact = Math.abs(contact.getImpactVelocityAlongNormal());
+      if (impact > this._lastImpact) {
+        this._lastImpact = impact;
+        // Contact point in world space: body i's position + its local-frame
+        // offset to the contact (ri is already world-oriented per cannon-es).
+        const bi = contact.bi;
+        const ri = contact.ri;
+        if (bi && ri) {
+          this._lastImpactPos = {
+            x: bi.position.x + ri.x,
+            y: bi.position.y + ri.y,
+            z: bi.position.z + ri.z,
+          };
+        }
+      }
+    });
+  }
+
+  /**
+   * Read and clear the strongest collision impact recorded since the last
+   * call. Intended to be polled once per fixed step.
+   * @returns {{speed:number, position:{x:number,y:number,z:number}|null}}
+   */
+  consumeImpact() {
+    const speed = this._lastImpact;
+    const position = this._lastImpactPos;
+    this._lastImpact = 0;
+    this._lastImpactPos = null;
+    return { speed, position };
   }
 
   _buildVehicle() {
